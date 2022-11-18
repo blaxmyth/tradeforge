@@ -1,14 +1,14 @@
+import json
 import psycopg2, psycopg2.extras, requests
 import pandas as pd
-import numpy as np
 from datetime import datetime, date, timedelta
 from iexfinance.stocks import Stock, get_historical_intraday, get_historical_data
 from config.config import *
 from send_raw_mail import *
 
 #store the current date or a custom date for testing
-# today = date.today()
-today = datetime(2022, 10, 25)
+today = date.today()
+# today = datetime(2022, 11, 16)
 
 #only run the script if the date above is a weekday
 if today.weekday() == 0:
@@ -24,6 +24,32 @@ elif today.weekday() == 4:
 else:
     print("it is not a trading day (M - F)")
     quit()
+
+#get existing orders
+response = requests.get('https://sandbox.tradier.com/v1/accounts/VA41833079/orders',
+    params={'includeTags': 'true'},
+    headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+)
+json_response = response.json()
+
+existing_order_symbols = []
+
+if json_response["orders"] != 'null':
+    orders = json_response["orders"]["order"]
+
+    # build list of existing option symbols
+    for order in orders:
+
+        # transform th create_date into a regular date format to match today
+        create_date = order["create_date"]
+        create_date = datetime.strptime(create_date, '%Y-%m-%dT%H:%M:%S.%fZ')
+        create_date = create_date.date()
+
+        #if the order was placed today, add the symbol to variable
+        if create_date == today:
+            existing_order_symbols.append(order["leg"][0]["option_symbol"])
+
+# print(existing_order_symbols)
 
 # query database for opening range stategies that are applied to a stock
 connection = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
@@ -51,7 +77,6 @@ for row in rows:
 
     #get the latest intraday minute data for stock
     df = get_historical_intraday(symbol, today, token=IEX_TOKEN)
-    # print(df) 
 
     #store minute bars for first 15 minutes
     opening_range_mask = (df.index >= start_minute_bar) & (df.index <= end_minute_bar)
@@ -69,240 +94,237 @@ for row in rows:
     # print(f"Opening Range Low: {opening_range_low}")
     # print(f"Opening Range High: {opening_range_high}")
     # print(f"Opening Range: {opening_range}")
-    # print(opening_range_bars)
 
     #get the current price of stock symbol
     stock = Stock(f'{symbol}', token=IEX_TOKEN)
     quote = stock.get_price()
     quote = quote[f"{symbol}"].price
-    # print(f"Current Price: {quote}")
 
-    #round current price to closest dollar for ATM option strike price
-    #this will not always calc the correct strike price and will cause the option symbol to not be found
-    # strike_price = round(quote)
-
-    #get list of strike prices and calc at the money strike that is closest to the current price
-    #TODO this will not work if the closest strike price is not a whole number like 152.5
+    #get list of strike prices
     response = requests.get('https://sandbox.tradier.com/v1/markets/options/strikes',
         params={'symbol': symbol, 'expiration': expiration},
         headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
     )
     json_response = response.json()
-    # print(response.status_code)
     strike_list = json_response["strikes"]["strike"]
-    # print(strike_list)
-    strike_price = round(min(strike_list, key=lambda x:abs(x-quote)))
-    # print(f"calculated strike price: {strike_price}")
+
+    #calc the closest strike price to the current price for ATM option strike
+    strike_price = min(strike_list, key=lambda x:abs(x-quote))
+
+    #prep strike price to be added to the option symbol (00022000)
+    strike_symbol = str(strike_price).zfill(7)
+    strike_symbol = strike_symbol.replace('.', '')
 
     #init symbol vars to build option symbol
     expiration_symbol = expiration.strftime("%y%m%d")
-    strike_symbol = str(strike_price).zfill(5)
     call = 'C'
     put = 'P'
 
+    #get minute bars where the close is greater/less than the opening range
+    breakout_signal = after_opening_range_bars[after_opening_range_bars['close'] > opening_range_high]
+    breakdown_signal = after_opening_range_bars[after_opening_range_bars['close'] < opening_range_low]
+
     if strategy == "opening_range_breakout":
 
-        #get minute bars where the close is greater than the opening range
-        breakout_signal = after_opening_range_bars[after_opening_range_bars['close'] > opening_range_high]
+        #if the breakout symbol is not empty
+        if not breakout_signal.empty:
 
-        #build option symbol
-        option_symbol = symbol + expiration_symbol + call + strike_symbol + '000'
+            #build option symbol
+            option_symbol = symbol + expiration_symbol + call + strike_symbol + '00'
 
-        print(option_symbol)
+            # check if order already exists and is there is a breakout trade signal
+            if option_symbol not in existing_order_symbols:
 
-        try:
-            #send request to get available option chains
-            response = requests.get('https://sandbox.tradier.com/v1/markets/options/chains',
-                params={'symbol': symbol, 'expiration': expiration},
-                headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
-            )
-            json_response = response.json()
-            # print(response.status_code)
-            # print(json_response)
+            # print(option_symbol)
 
-            #create list of available option chain symbols
-            option_chain_symbols = []
-            for row in json_response["options"]["option"]:
-                # print(row)
-                option_chain_symbols.append(row["symbol"])
-                # print(row["last"])
+                try:
+                    #send request to get available option chains
+                    response = requests.get('https://sandbox.tradier.com/v1/markets/options/chains',
+                        params={'symbol': symbol, 'expiration': expiration},
+                        headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+                    )
+                    json_response = response.json()
 
-            #test if option_symbol built by script is available from broker
-            if option_symbol in option_chain_symbols:
-                # print(breakout_signal['close'])
+                    #create list of available option chain symbols
+                    option_chain_symbols = []
+                    for row in json_response["options"]["option"]:
+                        option_chain_symbols.append(row["symbol"])
 
-                #get current price of option chain/contract
-                response = requests.get('https://sandbox.tradier.com/v1/markets/quotes',
-                    params={'symbols': option_symbol, 'greeks': 'false'},
-                    headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
-                )
-                json_response = response.json()
-                option_limit_price = json_response["quotes"]["quote"]["last"]
+                    #test if option_symbol is available from broker
+                    if option_symbol in option_chain_symbols:
 
-                #calc profit and loss of bracket trade
-                option_take_profit = round(option_limit_price * 1.2, 2)
-                option_stop_loss = round(option_limit_price * .9, 2)
+                        #get current price of option chain/contract
+                        response = requests.get('https://sandbox.tradier.com/v1/markets/quotes',
+                            params={'symbols': option_symbol, 'greeks': 'false'},
+                            headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+                        )
+                        json_response = response.json()
+                        option_limit_price = json_response["quotes"]["quote"]["last"]
 
-                #VARS AND PAYLOAD FOR REGULAR STOCKS (NOT OPTIONS)
-                # limit_price = int(breakout_signal.iloc[0]['close'])
-                # take_profit = limit_price + opening_range
-                # stop_loss = limit_price - opening_range
-                # data={
-                #             'class': 'otoco', 
-                #             'duration': 'day', 
-                #             'type[0]': 'limit', 
-                #             'price[0]': f'{limit_price}', 
-                #             'symbol[0]': f'{symbol}', 
-                #             'side[0]': 'buy', 
-                #             'quantity[0]': '10', 
-                #             'type[1]': 'limit', 
-                #             'price[1]': f'{limit_price + opening_range}', 
-                #             'symbol[1]': f'{symbol}', 
-                #             'side[1]': 'sell', 
-                #             'quantity[1]': '10', 
-                #             'type[2]': 'stop', 
-                #             'stop[2]': f'{limit_price - opening_range}', 
-                #             'symbol[2]': f'{symbol}', 
-                #             'side[2]': 'sell', 
-                #             'quantity[2]': '10'
-                #         }
+                        #calc profit and loss of bracket trade
+                        option_take_profit = round(option_limit_price * 1.1, 2)
+                        option_stop_loss = round(option_limit_price * .8, 2)
 
-                #init option order payload
-                data={
-                        'class': 'otoco', 
-                        'duration': 'day', 
-                        'type[0]': 'limit', 
-                        'price[0]': option_limit_price, 
-                        'option_symbol[0]': option_symbol, 
-                        'side[0]': 'buy_to_open', 
-                        'quantity[0]': '10', 
-                        'type[1]': 'limit', 
-                        'price[1]': option_take_profit, 
-                        'option_symbol[1]': option_symbol, 
-                        'side[1]': 'sell_to_close', 
-                        'quantity[1]': '10', 
-                        'type[2]': 'stop', 
-                        'stop[2]': option_stop_loss, 
-                        'option_symbol[2]': option_symbol, 
-                        'side[2]': 'sell_to_close', 
-                        'quantity[2]': '10'
-                    }
-                # print(data)
+                        #VARS AND PAYLOAD FOR REGULAR STOCKS (NOT OPTIONS)
+                        # limit_price = int(breakout_signal.iloc[0]['close'])
+                        # take_profit = limit_price + opening_range
+                        # stop_loss = limit_price - opening_range
+                        # data={
+                        #             'class': 'otoco', 
+                        #             'duration': 'day', 
+                        #             'type[0]': 'limit', 
+                        #             'price[0]': f'{limit_price}', 
+                        #             'symbol[0]': f'{symbol}', 
+                        #             'side[0]': 'buy', 
+                        #             'quantity[0]': '10', 
+                        #             'type[1]': 'limit', 
+                        #             'price[1]': f'{limit_price + opening_range}', 
+                        #             'symbol[1]': f'{symbol}', 
+                        #             'side[1]': 'sell', 
+                        #             'quantity[1]': '10', 
+                        #             'type[2]': 'stop', 
+                        #             'stop[2]': f'{limit_price - opening_range}', 
+                        #             'symbol[2]': f'{symbol}', 
+                        #             'side[2]': 'sell', 
+                        #             'quantity[2]': '10'
+                        #         }
 
-                #send request to create order
-                response = requests.post('https://sandbox.tradier.com/v1/accounts/VA41833079/orders',
-                    data=data,
-                    headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
-                )
-                print(response)
-                json_response = response.json()
-                # print(response.status_code)
-                print(json_response)
-                message = f"placing {strategy} order for {option_symbol} at {option_limit_price}, {symbol} closed above {opening_range_high}, at {breakout_signal.index[0]}"
-                print(message)
+                        #init option order payload
+                        data={
+                                'class': 'otoco', 
+                                'duration': 'day', 
+                                'type[0]': 'limit', 
+                                'price[0]': option_limit_price, 
+                                'option_symbol[0]': option_symbol, 
+                                'side[0]': 'buy_to_open', 
+                                'quantity[0]': '10', 
+                                'type[1]': 'limit', 
+                                'price[1]': option_take_profit, 
+                                'option_symbol[1]': option_symbol, 
+                                'side[1]': 'sell_to_close', 
+                                'quantity[1]': '10', 
+                                'type[2]': 'stop', 
+                                'stop[2]': option_stop_loss, 
+                                'option_symbol[2]': option_symbol, 
+                                'side[2]': 'sell_to_close', 
+                                'quantity[2]': '10'
+                            }
+                      
+                        #send request to create order
+                        response = requests.post('https://sandbox.tradier.com/v1/accounts/VA41833079/orders',
+                            data=data,
+                            headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+                        )
 
-                #send email with order details
-                notify(message)
+                        json_response = response.json()
+                        # print(json_response['errors'])
+                        message = f"placing {strategy} order for {option_symbol} at {option_limit_price}, {symbol} closed above {opening_range_high}, at {breakout_signal.index[0]}"
+                        print(message)
+
+                        #send email with order details message
+                        notify(message)
+                    else:
+                        print(f"{option_symbol} not found in option chain list")
+                        print(f"strike price {strike_price} not found for {symbol}")
+                except Exception as e:
+                    print(e)
+                    print("==========================================================")
+                    continue
             else:
-                print(f"{option_symbol} not found in option chain list")
-        except Exception as e:
-            print(f"no {strategy} entry for {symbol}")
-            # print(e)
-            print("==========================================================")
-            continue
+                print(f"order for {option_symbol} already exists")
+        else:
+            print(f"no {strategy} entry signal for {symbol}")
 
     elif strategy == "opening_range_breakdown":
-        
-        breakdown_signal = after_opening_range_bars[after_opening_range_bars['close'] < opening_range_low]
+        if not breakdown_signal.empty:
 
-        option_symbol = symbol + expiration_symbol + put + strike_symbol + '000'
+            option_symbol = symbol + expiration_symbol + put + strike_symbol + '00'
 
-        print(option_symbol)
+            if option_symbol not in existing_order_symbols:
 
-        try:
-            response = requests.get('https://sandbox.tradier.com/v1/markets/options/chains',
-                params={'symbol': symbol, 'expiration': expiration},
-                headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY} ', 'Accept': 'application/json'}
-            )
-            json_response = response.json()
-            # print(response.status_code)
-            # print(json_response)
-            option_chain_symbols = []
-            for row in json_response["options"]["option"]:
-                option_chain_symbols.append(row["symbol"])
-                # print(row["last"])
-                        
-            if option_symbol in option_chain_symbols:
-                # print(breakout_signal['close'])
-                response = requests.get('https://sandbox.tradier.com/v1/markets/quotes',
-                    params={'symbols': option_symbol, 'greeks': 'false'},
-                    headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
-                )
-                json_response = response.json()
+                try:
+                    response = requests.get('https://sandbox.tradier.com/v1/markets/options/chains',
+                        params={'symbol': symbol, 'expiration': expiration},
+                        headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY} ', 'Accept': 'application/json'}
+                    )
+                    json_response = response.json()
+    
+                    option_chain_symbols = []
+                    for row in json_response["options"]["option"]:
+                        option_chain_symbols.append(row["symbol"])
+                                
+                    if option_symbol in option_chain_symbols:
+                        response = requests.get('https://sandbox.tradier.com/v1/markets/quotes',
+                            params={'symbols': option_symbol, 'greeks': 'false'},
+                            headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+                        )
+                        json_response = response.json()
 
-                option_limit_price = json_response["quotes"]["quote"]["last"]
-                option_take_profit = round(option_limit_price * 1.2, 2)
-                option_stop_loss = round(option_limit_price * .9, 2)
+                        option_limit_price = json_response["quotes"]["quote"]["last"]
+                        option_take_profit = round(option_limit_price * 1.1, 2)
+                        option_stop_loss = round(option_limit_price * .8, 2)
 
-                limit_price = int(breakdown_signal.iloc[0]['close'])
-                take_profit = limit_price + opening_range
-                stop_loss = limit_price - opening_range
-                
-                # data = {
-                #             'class': 'otoco', 
-                #             'duration': 'day', 
-                #             'type[0]': 'limit', 
-                #             'price[0]': f'{limit_price}', 
-                #             'symbol[0]': f'{symbol}', 
-                #             'side[0]': 'buy', 
-                #             'quantity[0]': '10', 
-                #             'type[1]': 'limit', 
-                #             'price[1]': f'{limit_price - opening_range}', 
-                #             'symbol[1]': f'{symbol}', 
-                #             'side[1]': 'sell', 
-                #             'quantity[1]': '10', 
-                #             'type[2]': 'stop', 
-                #             'stop[2]': f'{limit_price + opening_range}', 
-                #             'symbol[2]': f'{symbol}', 
-                #             'side[2]': 'sell', 
-                #             'quantity[2]': '10'
-                #         }
-                data = {
-                            'class': 'otoco', 
-                            'duration': 'day', 
-                            'type[0]': 'limit', 
-                            'price[0]': option_limit_price, 
-                            'option_symbol[0]': option_symbol, 
-                            'side[0]': 'buy_to_open', 
-                            'quantity[0]': '10', 
-                            'type[1]': 'limit', 
-                            'price[1]': option_take_profit, 
-                            'option_symbol[1]': option_symbol, 
-                            'side[1]': 'sell_to_close', 
-                            'quantity[1]': '10', 
-                            'type[2]': 'stop', 
-                            'stop[2]': option_stop_loss, 
-                            'option_symbol[2]': option_symbol, 
-                            'side[2]': 'sell_to_close', 
-                            'quantity[2]': '10'
-                        }
-                # print(data)
-                response = requests.post('https://sandbox.tradier.com/v1/accounts/VA41833079/orders',
-                    data=data,
-                    headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
-                )
-                print(response)
-                json_response = response.json()
-                # print(response.status_code)
-                print(json_response)
-                message=f"placing {strategy} order for {option_symbol} at {option_limit_price}, {symbol} closed below {opening_range_low}, at {breakdown_signal.index[0]}"
-                print(message)
-                notify(message)
+                        #VARS AND PAYLOAD FOR REGULAR STOCKS (NOT OPTIONS)
+                        # limit_price = int(breakdown_signal.iloc[0]['close'])
+                        # take_profit = limit_price + opening_range
+                        # stop_loss = limit_price - opening_range
+                        # data = {
+                        #             'class': 'otoco', 
+                        #             'duration': 'day', 
+                        #             'type[0]': 'limit', 
+                        #             'price[0]': f'{limit_price}', 
+                        #             'symbol[0]': f'{symbol}', 
+                        #             'side[0]': 'buy', 
+                        #             'quantity[0]': '10', 
+                        #             'type[1]': 'limit', 
+                        #             'price[1]': f'{limit_price - opening_range}', 
+                        #             'symbol[1]': f'{symbol}', 
+                        #             'side[1]': 'sell', 
+                        #             'quantity[1]': '10', 
+                        #             'type[2]': 'stop', 
+                        #             'stop[2]': f'{limit_price + opening_range}', 
+                        #             'symbol[2]': f'{symbol}', 
+                        #             'side[2]': 'sell', 
+                        #             'quantity[2]': '10'
+                        #         }
+                        data = {
+                                    'class': 'otoco', 
+                                    'duration': 'day', 
+                                    'type[0]': 'limit', 
+                                    'price[0]': option_limit_price, 
+                                    'option_symbol[0]': option_symbol, 
+                                    'side[0]': 'buy_to_open', 
+                                    'quantity[0]': '10', 
+                                    'type[1]': 'limit', 
+                                    'price[1]': option_take_profit, 
+                                    'option_symbol[1]': option_symbol, 
+                                    'side[1]': 'sell_to_close', 
+                                    'quantity[1]': '10', 
+                                    'type[2]': 'stop', 
+                                    'stop[2]': option_stop_loss, 
+                                    'option_symbol[2]': option_symbol, 
+                                    'side[2]': 'sell_to_close', 
+                                    'quantity[2]': '10'
+                                }
+                        response = requests.post('https://sandbox.tradier.com/v1/accounts/VA41833079/orders',
+                            data=data,
+                            headers={'Authorization': f'Bearer {TRADIER_SANDBOX_KEY}', 'Accept': 'application/json'}
+                        )
+                        json_response = response.json()
+                        print(json_response['errors'])
+                        message=f"placing {strategy} order for {option_symbol} at {option_limit_price}, {symbol} closed below {opening_range_low}, at {breakdown_signal.index[0]}"
+                        print(message)
+                        notify(message)
+                    else:
+                        print(f"{option_symbol} not found in option chain list")
+                        print(f"strike price {strike_price} not found for {symbol}")
+                except Exception as e:
+                    print(e)
+                    print("==========================================================")
+                    continue
             else:
-                print(f"{option_symbol} not found in option chain list")
-        except Exception as e:
-            # print(e)
-            print(f"no {strategy} entry for {symbol}")
-            print("==========================================================")
-            continue
+                print(f"order for {option_symbol} already exists")
+        else:
+            print(f"no {strategy} entry signal for {symbol}")
+
     print("==========================================================")

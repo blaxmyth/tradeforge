@@ -19,11 +19,11 @@ def notify(message):
     # The HTML body of the email.
     BODY_HTML = f"""
     <html>
-    <head></head>
-    <body>
-    <h1>Hello!</h1>
-    <p>{message}</p>
-    </body>
+        <head></head>
+        <body>
+            <h1>Hello!</h1>
+            <p>{message}</p>
+        </body>
     </html>
     """
     # The character encoding for the email.
