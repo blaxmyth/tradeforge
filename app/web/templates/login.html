@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}
+
+<title>Sign In | Tradeforge</title>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+      <div class="row">
+        <!-- <h2 class="ui teal image header">
+          Sign In
+        </h2> -->
+        {% if errors|length > 0 %}
+        <div class="ui error message">
+          {% for error in errors %}
+             <p>{{error}}</p>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <br>
+      <form class="ui large form" method="post">
+        <div class="field required">
+            <label class="left aligned">Email</label>
+            <input type="email" name="email" placeholder="Email" value="{{email}}" required>
+        </div>
+        <div class="field required">
+            <label class="left aligned">Password</label>
+            <input type="password" name="password" placeholder="Password" value="{{password}}" required>
+        </div>
+        <button type="submit" class="ui fluid button">Sign In</button>
+        <div class="ui error message"></div>
+      </form>
+      <div>
+        Don't have an account? <a href="/register">Sign Up</a>
+      </div>
+    </div>
+  </div>
+
+{% endblock %}

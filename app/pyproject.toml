@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "app"
+version = "0.1.0"
+description = ""
+authors = ["blaxmyth <cbonnette215@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.115.12"
+uvicorn = "^0.34.0"
+numpy = "^2.2.4"
+scipy = "^1.15.2"
+pandas = "^2.2.3"
+pandas-datareader = "^0.10.0"
+psycopg2 = "^2.9.10"
+sqlalchemy = "^2.0.39"
+pydantic = "^2.10.6"
+asyncpg = "^0.30.0"
+alpaca-py = "^0.39.1"
+ib-insync = "^0.9.86"
+plotly = "^6.0.1"
+backtrader = "^1.9.78.123"
+requests = "^2.32.3"
+boto3 = "^1.37.20"
+beautifulsoup4 = "^4.13.3"
+jinja2 = "^3.1.6"
+redis = {extras = ["asyncio"], version = "^5.2.1"}
+prometheus-client = "^0.21.1"
+discordwebhook = "^1.0.3"
+aiohttp = "^3.11.14"
+celery = "^5.4.0"
+polygon-api-client = "^1.14.4"
+python-dateutil = "^2.9.0.post0"
+flower = "^2.0.1"
+certifi = "^2025.1.31"
+passlib = "^1.7.4"
+python-jose = "^3.3.0"
+python-multipart = "^0.0.20"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,111 @@
+.inline {
+    display: inline-block;
+}
+
+.left {
+    float: left;
+    position: inherit;
+    z-index: 99;
+}
+
+.right {
+    float: right;
+    position: inherit;
+    z-index: 99;
+}
+
+.right.menu.item {
+    height: 100%;
+}
+
+.right.menu.item a {
+    padding: 0 !important;
+    align-self: center;
+}
+
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#footer{
+    margin-top: auto;
+}
+
+#logo { 
+    font-size: 32px; margin: 30px 0 30px 0; 
+}
+
+#logo-icon { 
+    font-size: 40px; 
+}
+
+#product-name { 
+    font-size: 40px; margin-top: 10px; 
+}
+
+#product-name a {
+    color: black; 
+}
+
+#tagline { 
+    font-size: 16px; margin-top: 20px; 
+}
+
+body { 
+    font-family: 'Roboto', sans-serif; 
+}
+
+#content { 
+    margin-top: 30px; 
+}
+
+li { 
+    font-size: 16px; line-height: 20px; 
+}
+
+.ui.secondary.pointing.menu > a.item {
+    margin-right: 50px;
+    font-size: 20px;
+}
+
+.right.menu.item a.item{
+    font-size: 20px;
+    align-self: center !important;
+}
+
+.right.menu.item span{
+    font-size: 20px;
+}
+
+#searchInput {
+    margin-right: 3px;
+}
+
+/* footer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 60px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    background-color: #000000;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  footer p {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #777777;
+    text-align: center;
+  }
+
+  p.lead {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 21px;
+    color: #333333;
+    line-height: 1.4;
+    font-weight: 300;
+  } */

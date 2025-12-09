@@ -1,0 +1,127 @@
+<html>
+<head>
+    {% block title %}{% endblock %}
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+    <link rel="stylesheet" href="../static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;1,100&display=swap" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+</head>
+
+{% if user %}
+<div class="ui top attached menu">
+    <div class="ui dropdown icon item">
+      <i class="bars icon"></i>
+      <div class="menu">
+        <a href="/overview" class="item" >
+          Overview
+        </a>
+        <a href="/assets" class="item" >
+          Assets
+        </a>
+        <a href="/strategies" class="item" >
+          Strategies
+        </a>
+        <div class="divider"></div>
+        <div class="item">
+            <i class="dropdown icon"></i>
+            <span class="text">Admin</span>
+            <div class="menu">
+              <a href="/flower" class="item" target="_blank">Celery</a>
+              <a href="/pgadmin" class="item" target="_blank">pgAdmin</a>
+              <a href="/portainer" class="item" target="_blank">Portainer</a>
+              <a href="/prometheus" class="item" target="_blank">Prometheus</a>
+              <a href="/grafana" class="item" target="_blank">Grafana</a>
+            </div>
+        </div>
+        <div class="item">
+            <i class="dropdown icon"></i>
+            <span class="text">Environments</span>
+            <div class="menu">
+              <a href="http://localhost" class="item">Local</a>
+              <a href="https://dev.tradeforge.net" class="item">Dev</a>
+              <a href="https://tradeforge.net" class="item">Prod</a>
+            </div>
+        </div>
+        <div class="item">
+          <i class="dropdown icon"></i>
+          <span class="text">Tasks</span>
+          <div class="menu">
+            <a href="/populate_assets" class="item">Pop Assets</a>
+            <a href="/populate_prices" class="item">Pop Prices</a>
+            <a href="/populate_balances" class="item">Pop Balances</a>
+            <a href="/populate_gainloss" class="item">Pop Gain/Loss</a>
+            
+          </div>
+      </div>
+        <div class="divider"></div>
+        <a href="/logout">
+        <div class="item">
+            <span class="text">Logout</span>
+            <i class="sign-out icon"></i>
+        </div></a>
+
+      </div>
+    </div>
+    <div class="right menu item"> 
+        <i class="user circle icon"></i>
+        <span>{{ user }}</span>
+    </div>
+  </div>
+
+  <!-- TradingView Widget BEGIN -->
+<div class="tradingview-widget-container">
+  <div class="tradingview-widget-container__widget"></div>
+  <!-- <div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div> -->
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+  {
+    "symbols": [
+        {
+        "proName": "FOREXCOM:SPXUSD",
+        "title": "S&P 500"
+        },
+        {
+        "proName": "FOREXCOM:NSXUSD",
+        "title": "US 100"
+        }
+    ],
+    "showSymbolLogo": true,
+    "isTransparent": false,
+    "displayMode": "adaptive",
+    "colorTheme": "dark",
+    "locale": "en"
+    }
+  </script>
+</div>
+<!-- TradingView Widget END -->
+
+{% endif %}
+
+<body>
+    <div class="ui container vertical center aligned">
+        <div id="logo">
+            <a href="/assets"><img src="../static/logo.png" style="width:50%"></a>
+        </div>
+    </div>
+
+    <div id="content" class="ui container segment">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+<!-- <footer>
+  <div class="ui container"><p>Place sticky footer content here.</p></div>
+</footer> -->
+<script>
+     $('.ui.menu a.item').on('click', function () {
+            $('.ui.menu a.item').removeClass('active');
+            $(this).addClass('active');
+        })
+
+     $('.dropdown')
+        .dropdown({
+            transition: 'drop'
+        })
+     ;
+</script>
+</html>

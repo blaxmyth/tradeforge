@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<!-- <h2>Assets</h2> -->
+
+<div class="ui two column grid">
+    <div class="left floated column">
+        <form method="get">
+
+            <select name="filter" class="ui dropdown">
+
+                <option value="all"{% if selected == 'all' %}selected{% endif %}>All</option>
+                <option value="sp500" {% if selected == 'sp500' %}selected{% endif %}>SP500</option>
+                <option value="crypto" {% if selected == 'crypto' %}selected{% endif %}>Crypto</option>
+                <option value="watchlist" {% if selected == 'watchlist' %}selected{% endif %}>Watchlist</option>
+                <!-- <option value="rsi_oversold">RSI < 30 (OverSold)</option>
+                <option value="new_closing_highs">New Closing Highs</option>
+                <option value="new_intraday_lows">New Intraday Lows</option>
+                <option value="new_closing_lows">New Closing Lows</option> -->
+            </select>
+            <button class="ui button" type="submit">Submit</button>
+
+        </form>
+    </div>
+
+    <div class="right floated column">
+        <div class="right floated ui small icon input">
+            <input type="text" placeholder="Search ..." id="searchInput" onkeyup="search(event)">
+            <i class="search icon"></i>
+        </div>
+    </div>
+</div>
+
+<table class="ui striped table" id="assetTable">
+    <thead>
+        <tr>
+            <th>Symbol</th>
+            <th>Name</th>
+            <th></th>
+        </tr>
+    </thead>
+    {% for asset in assets %}
+    <tr>
+        <td>{{ asset.symbol }}</td>
+        <td><a href="/asset/{{ asset.symbol }}">{{ asset.name }}</a></td>
+        {% if selected == 'watchlist' %}
+        <td><button class="ui button right"><a href="/delete_from_watchlist/{{ asset.id }}">Delete From Watchlist</a></button></td>
+        {% else %}
+        <td><button class="ui button right"><a href="/add_to_watchlist/{{ asset.id }}">Add To Watchlist</a></button></td>
+        {% endif %}
+        
+    </tr>
+    {% endfor %}
+</table>
+
+<script>
+    function search(event) {
+        let searchtext = document.getElementById("searchInput").value.toLowerCase();
+        let table = document.getElementById("assetTable")
+        let rows = table.getElementsByTagName("tr")
+
+        for (let i = 1; i < rows.length; i++) {
+            let cells = rows[i].getElementsByTagName("td");
+            let symbol = cells[0].textContent.toLowerCase();
+            let name = cells[1].textContent.toLowerCase();
+
+            if(symbol.includes(searchtext) || name.includes(searchtext)) {
+                rows[i].style.display = "";
+            }
+            else {
+                rows[i].style.display = "none";
+            }
+        }
+    }
+</script>
+
+{% endblock %}

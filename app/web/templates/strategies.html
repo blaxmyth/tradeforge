@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+
+{% block title %}
+
+<title>Strategies | Tradeforge</title>
+
+{% endblock %}
+
+{% block content %}
+<!-- <h2>Stockss</h2> -->
+
+<table class="ui striped table">
+    <thead>
+        <tr>
+            <th>Strategy</th>
+        </tr>
+    </thead>
+    {% for strategy in strategies %}
+    <tr>
+        <td><a href="/strategy/{{ strategy.id }}">{{ strategy.name }}</a></td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

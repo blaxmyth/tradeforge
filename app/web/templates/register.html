@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+
+{% block title %}
+
+<title>Sign Up | Tradeforge</title>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+      <div class="row">
+        <!-- <h2 class="ui teal image header">
+          Create an account
+        </h2> -->
+        {% if errors | length > 0 %}
+        <div class="ui error message">
+          {% for error in errors %}
+             <li>{{error}}</li>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      
+      <form class="ui large form" method="post">
+        <div class="field required">
+            <label class="left aligned">User Name</label>
+            <input type="text" name="username" placeholder="User Name" value="{{username}}" required>
+        </div>
+        <div class="field required">
+            <label class="left aligned">Email</label>
+            <input type="email" name="email" placeholder="Email" value="{{email}}" required>
+        </div>
+        <div class="field required">
+            <label class="left aligned">Password</label>
+            <input type="password" name="password" placeholder="Password" value="{{password}}" required>
+        </div>
+        <div class="field required">
+            <label class="left aligned">Confirm Password</label>
+            <input type="password" name="confirmPassword" placeholder="Confirm Password" value="{{confirmPassword}}" required>
+        </div>
+        <div class="field required">
+            <label class="left aligned">Phone Number</label>
+            <input type="tel" name="phonenumber" placeholder="Phone Number" value="{{phone}}" required>
+        </div>
+        <button type="submit" class="ui fluid button">Register</button>
+        <div class="ui error message"></div>
+      </form>
+      <div>
+        Already have an account? <a href="/login">Sign In</a>
+      </div>
+    </div>
+  </div>
+
+{% endblock %}
