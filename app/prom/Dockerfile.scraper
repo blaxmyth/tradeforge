@@ -1,0 +1,17 @@
+# Use a lightweight Python base image
+FROM python:3.11-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Install dependencies required only for the scraper:
+# 'requests' for HTTP calls to the FastAPI /metrics endpoint
+# 'prometheus-client' for starting the metrics exporter server
+RUN pip install --no-cache-dir requests prometheus-client
+
+# Copy the scraper script from the build context (which is ./app)
+# NOTE: metrics_scraper.py MUST be in the ./app directory
+COPY metrics_scraper.py .
+
+# Command to run the scraper script
+CMD ["python", "-u", "metrics_scraper.py"]

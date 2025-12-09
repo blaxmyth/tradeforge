@@ -84,16 +84,13 @@ async def populate_assets(db: AsyncSession):
                     name=name,
                     symbol=symbol,
                     exchange=exchange,
-                    asset_class=asset_class.value, # Use .value to get the string representation
-                    is_sp500=is_sp500 # FIX: Default to False to satisfy non-nullable boolean requirement
+                    asset_class=asset_class.value,
+                    is_sp500=is_sp500 
                 )
                 db.add(new_asset)
                 new_asset_count += 1
             except Exception as e:
                 print(f"ERROR inserting asset {symbol}: {e}")
-                # This could still be a Pydantic/SQLAlchemy validation error if 
-                # your local Asset model's columns (e.g., 'asset_class') are defined 
-                # as Enums that are still too strict.
         else:
             # Optionally, you might want to update existing asset data here
             print(f"{symbol} already exists in database. Skipping...")

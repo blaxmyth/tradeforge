@@ -1,7 +1,23 @@
 global:
-  scrape_interval: 15s
+  scrape_interval: 15s # Scrape everything every 15 seconds
+  evaluation_interval: 15s # Added evaluation interval for completeness
 
 scrape_configs:
-  - job_name: "fastapi-app"
+  # # Job 1: Existing FastAPI application metrics (direct scrape)
+  # - job_name: "fastapi-app"
+  #   metrics_path: '/metrics' # <-- Corrected: Moved to the job level
+  #   static_configs:
+  #     # Targets the /metrics endpoint exposed directly by the FastAPI web service
+  #     - targets: ["fastapi-web:8080"]
+  - job_name: 'prometheus'
+    # This job monitors the Prometheus server running on port 9090 inside the container.
     static_configs:
-      - targets: ["fastapi-web:8080"]
+      - targets: ['localhost:9090']
+        
+  # Job 2: The new metrics collector/exporter for FastAPI health
+  - job_name: 'metrics_scraper_exporter'
+    scrape_interval: 5s # Scrape this collector more frequently for timely status updates
+    metrics_path: '/metrics' # <-- Corrected: Moved to the job level
+    static_configs:
+      # Targets the metrics-scraper container on the port where the Prometheus client is running
+      - targets: ['metrics-scraper:9100']

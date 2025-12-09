@@ -84,6 +84,14 @@ li {
     margin-right: 3px;
 }
 
+.asset-label * {
+    display: inline-block;
+}
+
+.asset-label form {
+    float: right;
+}
+
 /* footer {
     position: absolute;
     bottom: 0;

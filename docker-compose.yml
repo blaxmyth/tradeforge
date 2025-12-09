@@ -144,6 +144,24 @@ services:
       - prometheus
     networks:
       - tradeforge_net
+  
+  metrics-scraper:
+    build: 
+      context: ./app/prom
+      dockerfile: Dockerfile.scraper # Explicitly use the new Dockerfile
+    container_name: metrics-scraper
+    # command: python metrics_scraper.py 
+    environment:
+      TARGET_METRICS_URL: http://fastapi-web:8080/metrics
+      SCRAPE_INTERVAL_SECONDS: 15
+      EXPORTER_PORT: 9100
+    ports:
+      - "9100:9100" 
+    depends_on:
+      fastapi-web:
+        condition: service_started
+    networks:
+      - tradeforge_net
 
 networks:
   tradeforge_net:

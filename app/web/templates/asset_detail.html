@@ -1,8 +1,19 @@
 {% extends "layout.html" %}
 
 {% block content %}
+<div class="asset-label">
+    <h2><a href="/assets">Assets</a> >> {{ asset.symbol }} >> {{ asset.name }}</h2>
 
-<h2><a href="/assets">Assets</a> >> {{ asset.symbol }} >> {{ asset.name }}</h2>
+    <form method="POST" action="/apply_strategy">
+        <select name="strategy_id" class="ui dropdown">
+            {% for strategy in strategies %}
+            <option value="{{strategy.id}}">{{strategy.name}}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="asset_id" value="{{ asset.id }}">
+        <input type="submit" value="Apply Strategy" class="ui button">
+    </form>
+</div>
 
 <div class="tradingview-widget-container">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -23,6 +34,7 @@
         });
     </script>
 </div>
+
 
 <table class="ui striped table">
     <thead>

@@ -81,7 +81,7 @@ async def assets(request: Request, asset_filter: str = "all", db: AsyncSession =
     })
 
 @router.get("/asset/{symbol}")
-async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db)):
+async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db), context: dict = Depends(get_authenticated_template_context)):
 
     query = select(Asset).where(Asset.symbol == symbol)
     asset = await db.scalar(query)
@@ -94,7 +94,11 @@ async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_
     prices_result = await db.scalars(query)
     prices = prices_result.all()
 
-    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "prices": prices})
+    strategies_query = select(Strategy)
+    strategies_result = await db.scalars(strategies_query)
+    strategies = strategies_result.all()
+
+    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "prices": prices, "strategies": strategies, **context})
 
 @router.get("/add_to_watchlist/{asset_id}")
 async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db)):
@@ -109,12 +113,8 @@ async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = D
 
 @router.get("/delete_from_watchlist/{asset_id}")
 async def delete_from_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db)):
-
-    asset = WatchList(asset_id=asset_id)
-
-    print(asset)
-
-    query = delete(WatchList).where(asset.asset_id == asset_id)
+    
+    query = delete(WatchList).where(WatchList.asset_id == asset_id)
 
     await db.execute(query)
 
