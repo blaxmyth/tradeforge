@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import date
 from config import *
 from db.models import *
 from db.database import *
 from sqlalchemy.future import select
+from sqlalchemy import delete
 from web.auth.auth import *
 
 templates = Jinja2Templates(directory="/app/web/templates")
@@ -15,74 +16,104 @@ router = APIRouter(
     dependencies=[Depends(get_current_user_from_token)]
 )
 
-# @router.post("/apply_strategy")
-# async def apply_strategy(request: Request, strategy_id: int = Form(...), stock_id: int = Form(...), db: Session = Depends(get_db)):
-#     try:
+@router.post("/apply_strategy")
+async def apply_strategy(
+    strategy_id: int = Form(...), 
+    asset_id: int = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # 1. Create a new AssetStrategy object (the join table entry)
+        new_link = AssetStrategy(
+            asset_id=asset_id, 
+            strategy_id=strategy_id
+        )
+
+        # 2. Add the new object to the session and commit
+        db.add(new_link)
+        await db.commit() # This executes the INSERT operation
+
+        # 3. Redirect to the strategy detail page to show the added asset
+        return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=status.HTTP_303_SEE_OTHER)
         
-#         connection = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
-
-#         cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-#         cursor.execute("""
-#             INSERT INTO stock_strategy VALUES (%s, %s)
-#         """, (stock_id, strategy_id,))
-
-#         connection.commit()
-
-#         return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=303)
-#     except Exception as e:
-#         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    except IntegrityError:
+        # Catch potential database errors (e.g., asset already linked, or non-existent FK)
+        await db.rollback()
+        # Log the error, and redirect back with a possible error message (e.g., via session)
+        print(f"Error: Asset {asset_id} is already linked to strategy {strategy_id} or foreign key constraint failed.")
+        return RedirectResponse(url=f"/strategy/{strategy_id}?error=link_failed", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception as e:
+        # General error handling (e.g., session expired, database unavailable)
+        print(f"An unexpected error occurred: {e}")
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
    
 
-# @router.post("/delete_strategy")
-# async def apply_strategy(request: Request, strategy_id: int = Form(...), stock_id: int = Form(...), db: Session = Depends(get_db)):
-#     try:
-#         token = request.cookies.get("access_token")
-#         scheme, param = get_authorization_scheme_param(token)  # scheme will hold "Bearer" and param will hold actual token value
-#         current_user: User = await get_current_user_from_token(token=param, db=db) #get user(email) from token
+@router.post("/delete_strategy")
+async def delete_strategy(
+    strategy_id: int = Form(...), 
+    asset_id: int = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # 1. Construct the delete query to remove the link in the AssetStrategy table
+        # We target the specific combination of asset_id and strategy_id
+        query = delete(AssetStrategy).where(
+            AssetStrategy.asset_id == asset_id, 
+            AssetStrategy.strategy_id == strategy_id
+        )
+
+        # 2. Execute the query
+        await db.execute(query)
+
+        # 3. Commit the change
+        await db.commit() 
+
+        # 4. Redirect to the strategy detail page to show the updated list
+        return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=status.HTTP_303_SEE_OTHER)
         
-#         connection = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
+    except Exception as e:
+        # Handle general errors (e.g., database connection issues)
+        await db.rollback()
+        print(f"An unexpected error occurred during deletion: {e}")
+        # Redirect back to the strategy page with an error status
+        return RedirectResponse(url=f"/strategy/{strategy_id}?error=delete_failed", status_code=status.HTTP_303_SEE_OTHER)
 
-#         cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-#         cursor.execute("""
-#             DELETE FROM stock_strategy
-#             WHERE stock_id = %s AND strategy_id = %s
-#         """, (stock_id, strategy_id,))
-
-#         connection.commit()
-
-#         return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=303)
-#     except Exception as e:
-#         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND) 
-
-# @router.get("/strategy/{strategy_id}")
-# async def strategy(request: Request, strategy_id, db: Session = Depends(get_db)):
-
-#     token = request.cookies.get("access_token")
-#     scheme, param = get_authorization_scheme_param(token)  # scheme will hold "Bearer" and param will hold actual token value
-#     current_user: User = await get_current_user_from_token(token=param, db=db) #get user(email) from token
+@router.get("/strategy/{strategy_id}")
+async def strategy_detail(
+    request: Request, 
+    strategy_id: int, # Use type hint for clarity
+    db: AsyncSession = Depends(get_db),
+    context: dict = Depends(get_authenticated_template_context) # Use the context dependency for user/auth details
+):
     
-#     connection = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
+    # 1. Fetch the Strategy object by ID
+    # This replaces the psycopg2 fetchone() for the strategy
+    strategy_query = select(Strategy).where(Strategy.id == strategy_id)
+    strategy = await db.scalar(strategy_query)
 
-#     cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-#     cursor.execute("""
-#         SELECT id, name FROM strategy WHERE id = %s
-#     """, (strategy_id,))
-
-#     strategy = cursor.fetchone()
-
-#     cursor.execute("""
-#         SELECT id, symbol, name, exchange 
-#         FROM stock 
-#         JOIN stock_strategy ON stock.id = stock_strategy.stock_id
-#         WHERE strategy_id = %s
-#     """, (strategy_id,))
-
-#     stocks = cursor.fetchall()
-
-#     return templates.TemplateResponse("strategy.html", {"request": request, "stocks": stocks, "strategy": strategy, "user" : current_user.username})
+    if not strategy:
+        # Handle case where strategy is not found (e.g., raise HTTP 404)
+        pass 
+    
+    assets_query = (
+        select(Asset)
+        .join(AssetStrategy, AssetStrategy.asset_id == Asset.id)
+        .where(AssetStrategy.strategy_id == strategy_id)
+    )
+    
+    # Execute the query and get all the Asset objects
+    assets_result = await db.scalars(assets_query)
+    assets = assets_result.all()
+    
+    return templates.TemplateResponse(
+        "strategy_detail.html", 
+        {
+            "request": request, 
+            "assets": assets, 
+            "strategy": strategy,
+            **context
+        }
+    )
 
 
 @router.get("/strategies")

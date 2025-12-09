@@ -17,14 +17,14 @@
             <th></th>
         </tr>
     </thead>
-    {% for stock in stocks %}
+    {% for asset in assets %}
     <tr>
-        <td>{{ stock.symbol }}</td>
-        <td><a href="/stock/{{ stock.symbol }}">{{ stock.name }}</a></td>
+        <td>{{ asset.symbol }}</td>
+        <td><a href="/asset/{{ asset.symbol }}">{{ asset.name }}</a></td>
         <td>
             <form method="POST" action="/delete_strategy">
                 <input type="hidden" name="strategy_id" value="{{ strategy.id }}">
-                <input type="hidden" name="stock_id" value="{{ stock.id }}">
+                <input type="hidden" name="asset_id" value="{{ asset.id }}">
                 <input type="submit" value="Delete" class="ui button right floated">
             </form>
         </td>
