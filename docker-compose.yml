@@ -122,7 +122,7 @@ services:
     container_name: prometheus
     image: prom/prometheus
     command:
-      - "--web.external-url=/prometheus/"
+      # - "--web.external-url=/prometheus/"
       - "--config.file=/etc/prometheus/prometheus.yml"
     volumes:
       - ./app/prom/prometheus.yml:/etc/prometheus/prometheus.yml

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from db.models import Asset, Base 
 from db.database import async_session_maker, engine
+from scripts.functions import *
 
 
 # Helper function to yield an AsyncSession for use outside of FastAPI dependencies
@@ -31,6 +32,8 @@ async def get_session():
 async def populate_assets(db: AsyncSession):
     
     print("--- Starting Asset Population Script ---")
+
+    sp500 = get_sp500_symbols()
 
     # Initialize Alpaca client
     trading_client = TradingClient(ALPACA_KEY, ALPACA_SECRET)
@@ -74,10 +77,11 @@ async def populate_assets(db: AsyncSession):
         name = asset.name
         exchange = asset.exchange
         asset_class = asset.asset_class
-        is_sp500 = False
+        # is_sp500 = False
         # NOTE: Uncomment sp500 and etfs logic if you implement those functions
 
         if symbol not in existing_assets:
+            is_sp500 = True if symbol in sp500 else False
             try:
                 print(f"Inserting NEW asset: {symbol} - {name}")
                 new_asset = Asset(
