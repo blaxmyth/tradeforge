@@ -5,8 +5,6 @@ __pycache__/
 
 __init__.py
 
-config.py
-
 # C extensions
 *.so
 
@@ -148,3 +146,5 @@ tradeforge.pem
 tradeforge.ppk
 /app/logs/*
 .terraform*
+CLAUDE.md
+recommendations.md

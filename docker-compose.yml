@@ -8,12 +8,27 @@ services:
     restart: unless-stopped
     ports:
       - 5432:5432
-    environment:
-      - POSTGRES_USER=timescale
-      - POSTGRES_PASSWORD=timescale
-      - POSTGRES_DB=tradeforge
+    env_file: .env
     volumes:
       - db_data:/var/lib/postgresql/data
+    networks:
+      - tradeforge_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timescale -d tradeforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-migrate:
+    build: ./app
+    container_name: db-migrate
+    command: alembic -c db/alembic.ini upgrade head
+    env_file: .env
+    volumes:
+      - ./app:/app
+    depends_on:
+      timescale-db:
+        condition: service_healthy
     networks:
       - tradeforge_net
 
@@ -22,14 +37,14 @@ services:
     command: uvicorn web.main:app --host 0.0.0.0 --port 8080 --reload
     container_name: fastapi-web
     restart: unless-stopped
+    env_file: .env
     volumes:
       - ./app:/app
     ports:
       - "8080:8080"
-    environment:
-      - REDIS_HOST=redis
     depends_on:
-      - timescale-db
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - tradeforge_net
 
@@ -73,9 +88,12 @@ services:
     build: ./app
     container_name: minute-bar-stream
     command: python data/stream_minute_bars.py
+    env_file: .env
     depends_on:
-      - redis
-      - timescale-db
+      redis:
+        condition: service_started
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - tradeforge_net
 
@@ -83,6 +101,7 @@ services:
     build: ./app
     container_name: celery-worker
     command: celery -A tasks.tasks.celery worker --loglevel=info -B
+    env_file: .env
     depends_on:
       - redis
     networks:
@@ -91,7 +110,8 @@ services:
   celery-flower:
     build: ./app
     container_name: celery-flower
-    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower 
+    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower
+    env_file: .env
     ports:
       - "5555:5555"
     depends_on:

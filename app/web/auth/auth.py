@@ -114,59 +114,38 @@ async def create_user(user: UserSchema, db: Session):
 # Function to authenticate a user and generate a token
 async def authenticate_user(email: str, password: str, db: Session = Depends(get_db)):
     user = await get_user_by_email(email=email, db=db)
-    print(user)
     if not user:
         return None
     if not verify_password(password, user.password):
         return None
     return user
 
-# Get the current user based on the token
 async def get_current_user_from_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
     )
-    
-    # 🎯 NEW DEBUG: Log the token string passed to the decoder
-    print(f"DEBUG: Attempting to decode token: {token}")
 
-    # 💥 CRITICAL FIX: Ensure the 'Bearer ' prefix is removed if present.
+    # Cookie value may arrive as "Bearer <token>" — strip the prefix if present
     if token and token.startswith("Bearer "):
         token = token.split(" ", 1)[1]
-        print(f"DEBUG: Stripped prefix. New token: {token}")
-        
+
     try:
-        payload = jwt.decode(
-            token, SECRET_KEY, algorithms=[ALGORITHM]
-        )
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        
-        # 1. Check if email (sub) is present in the token payload
-        if not email :
-            # This is raised if the token payload is corrupt or missing the subject ('sub')
-            print("DEBUG: Token payload missing 'sub' (email) field.")
+        if not email:
             raise credentials_exception
-            
-    except JWTError as e:
-        # 2. This is the most common failure: token is expired, has the wrong signature, 
-        #    or the SECRET_KEY/ALGORITHM is wrong.
-        print(f"DEBUG: JWT Error - {e.__class__.__name__}: {e}") # Enhanced print statement
-        # Re-raise the exception after logging the specific error
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            # Added a fallback detail just in case the specific error is helpful:
-            detail=f"Token Invalid (JWT Error: {e.__class__.__name__})",
+            detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        
-    # 3. Check if user exists in the database
+
     user = await get_user_by_email(email=email, db=db)
     if not user:
-        # This is raised if the token is valid but points to a deleted user
-        print(f"DEBUG: Valid token, but user '{email}' not found in DB.")
         raise credentials_exception
-        
+
     return user
 
 async def unauthorized_exception_handler(request: Request, exc: StarletteHTTPException):
@@ -180,7 +159,6 @@ async def unauthorized_exception_handler(request: Request, exc: StarletteHTTPExc
         accept_header = request.headers.get("accept", "")
         
         if "text/html" in accept_header:
-            print("DEBUG: 401 Unauthorized detected. Redirecting browser client to /login.")
             return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
         else:
             # For non-browser clients (API calls), return the standard 401 JSON response

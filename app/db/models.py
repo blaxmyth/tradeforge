@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, TIMESTAMP, String, Boolean, ForeignKey, Date, Time, DateTime, Index
+from sqlalchemy import Column, Integer, Float, String, Boolean, ForeignKey, Date, DateTime, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -35,14 +35,14 @@ class Indicator(Base):
 
     datetime = Column(DateTime, nullable=False, primary_key=True)
     asset_id = Column(ForeignKey("asset.id"), nullable=False, primary_key=True)
-    rsi = Column(Integer)
-    macd = Column(Integer)
-    macdh = Column(Integer)
-    macds = Column(Integer)
-    adx = Column(Integer)
-    adx_dmp = Column(Integer)
-    adx_dmn = Column(Integer)
-    sma_200 = Column(Integer)
+    rsi = Column(Float)
+    macd = Column(Float)
+    macdh = Column(Float)
+    macds = Column(Float)
+    adx = Column(Float)
+    adx_dmp = Column(Float)
+    adx_dmn = Column(Float)
+    sma_200 = Column(Float)
 
 class Strategy(Base):
     __tablename__ = "strategy"
@@ -70,9 +70,14 @@ class WatchList(Base):
     __tablename__ = "watchlist"
 
     id = Column(Integer, primary_key=True)
-    asset_id = Column(ForeignKey("asset.id"), nullable=False, unique=True)
+    asset_id = Column(ForeignKey("asset.id"), nullable=False)
+    user_id = Column(ForeignKey("user.id"), nullable=False)
 
     asset = relationship("Asset")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "asset_id"),
+    )
 
 class ETFHolding(Base):
     __tablename__ = "etf_holding"

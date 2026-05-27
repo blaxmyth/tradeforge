@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 from db.models import *
 from db.database import *
 from db.schemas import AssetSchema
@@ -22,9 +23,13 @@ router = APIRouter(
 templates = Jinja2Templates(directory="/app/web/templates")
 
 @router.get("/assets")
-async def assets(request: Request, asset_filter: str = "all", db: AsyncSession = Depends(get_db), context: dict = Depends(get_authenticated_template_context)):
+async def assets(request: Request, asset_filter: str = "all", db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token), context: dict = Depends(get_authenticated_template_context)):
 
     asset_filter = request.query_params.get('filter', False)
+
+    watchlist_ids = set(
+        (await db.scalars(select(WatchList.asset_id).where(WatchList.user_id == current_user.id))).all()
+    )
 
     cache_key = f"assets:{asset_filter}"
     
@@ -54,6 +59,7 @@ async def assets(request: Request, asset_filter: str = "all", db: AsyncSession =
     elif asset_filter == 'watchlist':
         query = (
             select(WatchList)
+            .where(WatchList.user_id == current_user.id)
             .options(selectinload(WatchList.asset))
         )
         watchlist_assets = (await db.scalars(query)).all()
@@ -77,6 +83,7 @@ async def assets(request: Request, asset_filter: str = "all", db: AsyncSession =
         "request": request,
         "assets": rows,
         "selected": asset_filter,
+        "watchlist_ids": watchlist_ids,
         **context
     })
 
@@ -101,20 +108,20 @@ async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_
     return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "prices": prices, "strategies": strategies, **context})
 
 @router.get("/add_to_watchlist/{asset_id}")
-async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db)):
+async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):
 
-    asset = WatchList(asset_id=asset_id)
-
-    db.add(asset)
-
-    await db.commit()
+    try:
+        db.add(WatchList(asset_id=asset_id, user_id=current_user.id))
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
 
     return RedirectResponse(url="/assets?filter=watchlist", status_code=303)
 
 @router.get("/delete_from_watchlist/{asset_id}")
-async def delete_from_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db)):
-    
-    query = delete(WatchList).where(WatchList.asset_id == asset_id)
+async def delete_from_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):
+
+    query = delete(WatchList).where(WatchList.asset_id == asset_id, WatchList.user_id == current_user.id)
 
     await db.execute(query)
 

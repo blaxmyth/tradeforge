@@ -10,9 +10,6 @@ from web.auth.auth import unauthorized_exception_handler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run startup logic
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
 
 app = FastAPI(lifespan=lifespan)

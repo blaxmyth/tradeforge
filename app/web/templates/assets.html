@@ -43,8 +43,8 @@
     <tr>
         <td>{{ asset.symbol }}</td>
         <td><a href="/asset/{{ asset.symbol }}">{{ asset.name }}</a></td>
-        {% if selected == 'watchlist' %}
-        <td><button class="ui button right"><a href="/delete_from_watchlist/{{ asset.id }}">Delete From Watchlist</a></button></td>
+        {% if asset.id in watchlist_ids %}
+        <td><button class="ui button right"><a href="/delete_from_watchlist/{{ asset.id }}">Remove From Watchlist</a></button></td>
         {% else %}
         <td><button class="ui button right"><a href="/add_to_watchlist/{{ asset.id }}">Add To Watchlist</a></button></td>
         {% endif %}
