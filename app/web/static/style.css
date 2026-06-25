@@ -28,6 +28,7 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    padding-bottom: 60px;
 }
 
 #footer{
@@ -91,6 +92,15 @@ li {
 .asset-label form {
     float: right;
 }
+
+#ticker-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+}
+
 
 /* footer {
     position: absolute;

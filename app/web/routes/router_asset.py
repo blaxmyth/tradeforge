@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.exc import IntegrityError
 from db.models import *
 from db.database import *
@@ -15,6 +15,15 @@ from scripts.populate_assets import *
 from scripts.populate_prices import *
 from web.auth.auth import *
 import json
+import calendar
+
+_TIMEFRAME_TABLE = {
+    "1min":  ("asset_price",       "datetime"),
+    "5min":  ("asset_price_5min",  "bucket"),
+    "15min": ("asset_price_15min", "bucket"),
+    "1hr":   ("asset_price_1hr",   "bucket"),
+    "1day":  ("asset_price_1day",  "bucket"),
+}
 
 router = APIRouter(
     dependencies=[Depends(get_current_user_from_token)]
@@ -87,25 +96,53 @@ async def assets(request: Request, asset_filter: str = "all", db: AsyncSession =
         **context
     })
 
+@router.get("/api/asset/{symbol}/bars")
+async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: AsyncSession = Depends(get_db)):
+    if timeframe not in _TIMEFRAME_TABLE:
+        return JSONResponse(status_code=400, content={"error": "invalid timeframe"})
+
+    asset = await db.scalar(select(Asset).where(Asset.symbol == symbol))
+    if not asset:
+        return JSONResponse(status_code=404, content={"error": "asset not found"})
+
+    table, time_col = _TIMEFRAME_TABLE[timeframe]
+
+    result = await db.execute(
+        text(f"""
+            SELECT {time_col} AS t, open, high, low, close, volume
+            FROM {table}
+            WHERE asset_id = :asset_id
+            ORDER BY {time_col} DESC
+            LIMIT :limit
+        """),
+        {"asset_id": asset.id, "limit": limit},
+    )
+    rows = result.fetchall()
+
+    bars = [
+        {
+            "time": calendar.timegm(row[0].timetuple()),
+            "open": float(row[1]),
+            "high": float(row[2]),
+            "low": float(row[3]),
+            "close": float(row[4]),
+            "volume": int(row[5]) if row[5] else 0,
+        }
+        for row in reversed(rows)
+    ]
+
+    return JSONResponse(content=bars)
+
+
 @router.get("/asset/{symbol}")
 async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db), context: dict = Depends(get_authenticated_template_context)):
 
-    query = select(Asset).where(Asset.symbol == symbol)
-    asset = await db.scalar(query)
-
-    query = (
-        select(AssetPrice)
-        .where(AssetPrice.asset_id == asset.id)
-        .order_by(AssetPrice.datetime.desc())
-    )
-    prices_result = await db.scalars(query)
-    prices = prices_result.all()
+    asset = await db.scalar(select(Asset).where(Asset.symbol == symbol))
 
     strategies_query = select(Strategy)
-    strategies_result = await db.scalars(strategies_query)
-    strategies = strategies_result.all()
+    strategies = (await db.scalars(strategies_query)).all()
 
-    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "prices": prices, "strategies": strategies, **context})
+    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "strategies": strategies, **context})
 
 @router.get("/add_to_watchlist/{asset_id}")
 async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):

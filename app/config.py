@@ -4,7 +4,7 @@ import redis.asyncio as redis
 POLYGON_URL = os.getenv("POLYGON_URL", "https://api.polygon.io/v3/")
 POLYGON_KEY = os.getenv("POLYGON_KEY")
 
-ALPACA_URL = os.getenv("ALPACA_URL", "https://paper-api.alpaca.markets/v2")
+ALPACA_URL = os.getenv("ALPACA_URL")
 ALPACA_KEY = os.getenv("ALPACA_KEY")
 ALPACA_SECRET = os.getenv("ALPACA_SECRET")
 

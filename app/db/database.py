@@ -49,7 +49,7 @@ sync_url = URL.create(
 )
 
 # Synchronous engine
-sync_engine = create_engine(sync_url, echo=True)
+sync_engine = create_engine(sync_url, echo=False)
 
 # Synchronous session maker (for use in stream.py)
 # NOTE: This yields synchronous sessions which must be used outside of the main async loop.
