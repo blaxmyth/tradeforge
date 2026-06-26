@@ -1,0 +1,95 @@
+services:
+
+  db-admin:
+    image: dpage/pgadmin4
+    container_name: db-admin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: dbadmin@tradeforge.net
+      PGADMIN_DEFAULT_PASSWORD: timescale
+    ports:
+      - "5050:80"
+    networks:
+      - tradeforge_net
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  celery-flower:
+    build: ./app
+    container_name: celery-flower
+    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower
+    env_file: .env
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    volumes:
+      - flower_data:/etc/db
+    networks:
+      - tradeforge_net
+
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:lts
+    restart: always
+    ports:
+      - 8000:8000
+      - 9000:9000
+      - 9443:9443
+    networks:
+      - tradeforge_net
+    volumes:
+      - portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./app/prom/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - tradeforge_net
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SERVER_ROOT_URL=http://localhost/grafana/
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - tradeforge_net
+
+  metrics-scraper:
+    build:
+      context: ./app/prom
+      dockerfile: Dockerfile.scraper
+    container_name: metrics-scraper
+    environment:
+      TARGET_METRICS_URL: http://fastapi-web:8080/metrics
+      SCRAPE_INTERVAL_SECONDS: 15
+      EXPORTER_PORT: 9100
+    ports:
+      - "9100:9100"
+    depends_on:
+      - prometheus
+    networks:
+      - tradeforge_net
+
+networks:
+  tradeforge_net:
+    external: true
+
+volumes:
+  pgadmin_data:
+  portainer_data:
+  grafana_data:
+  flower_data:
