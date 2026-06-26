@@ -6,20 +6,12 @@
 <div class="ui two column grid">
     <div class="left floated column">
         <form method="get">
-
-            <select name="filter" class="ui dropdown">
-
+            <select name="filter" class="ui dropdown" onchange="this.form.submit()">
                 <option value="all"{% if selected == 'all' %}selected{% endif %}>All</option>
                 <option value="sp500" {% if selected == 'sp500' %}selected{% endif %}>SP500</option>
                 <option value="crypto" {% if selected == 'crypto' %}selected{% endif %}>Crypto</option>
                 <option value="watchlist" {% if selected == 'watchlist' %}selected{% endif %}>Watchlist</option>
-                <!-- <option value="rsi_oversold">RSI < 30 (OverSold)</option>
-                <option value="new_closing_highs">New Closing Highs</option>
-                <option value="new_intraday_lows">New Intraday Lows</option>
-                <option value="new_closing_lows">New Closing Lows</option> -->
             </select>
-            <button class="ui button" type="submit">Submit</button>
-
         </form>
     </div>
 

@@ -88,8 +88,10 @@ services:
   minute-bar-stream:
     build: ./app
     container_name: minute-bar-stream
-    command: python scripts/get_minute_bars.py
+    command: python -u scripts/get_minute_bars.py
     env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
     depends_on:
       redis:
         condition: service_started
