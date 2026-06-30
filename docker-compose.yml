@@ -45,6 +45,12 @@ services:
     depends_on:
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - tradeforge_net
 
@@ -58,7 +64,8 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - fastapi-web
+      fastapi-web:
+        condition: service_healthy
     networks:
       - tradeforge_net
 

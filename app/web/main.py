@@ -14,6 +14,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 app.add_exception_handler(StarletteHTTPException, unauthorized_exception_handler)
 
 app.include_router(router)
