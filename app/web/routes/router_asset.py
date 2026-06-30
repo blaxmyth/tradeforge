@@ -15,7 +15,9 @@ from scripts.populate_assets import *
 from scripts.populate_prices import *
 from web.auth.auth import *
 import json
-import calendar
+import pytz
+
+ET = pytz.timezone("US/Eastern")
 
 _TIMEFRAME_TABLE = {
     "1min":  ("asset_price",       "datetime"),
@@ -121,7 +123,7 @@ async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: A
 
     bars = [
         {
-            "time": calendar.timegm(row[0].timetuple()),
+            "time": int(ET.localize(row[0]).timestamp()),
             "open": float(row[1]),
             "high": float(row[2]),
             "low": float(row[3]),
