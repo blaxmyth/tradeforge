@@ -1,19 +1,5 @@
 services:
 
-  db-admin:
-    image: dpage/pgadmin4
-    container_name: db-admin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: dbadmin@tradeforge.net
-      PGADMIN_DEFAULT_PASSWORD: timescale
-    ports:
-      - "5050:80"
-    networks:
-      - tradeforge_net
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-
   celery-flower:
     build: ./app
     container_name: celery-flower
@@ -89,7 +75,6 @@ networks:
     external: true
 
 volumes:
-  pgadmin_data:
   portainer_data:
   grafana_data:
   flower_data:
