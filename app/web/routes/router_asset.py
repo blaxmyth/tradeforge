@@ -4,17 +4,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete, text
+from sqlalchemy import delete, text, func
+import math
 from sqlalchemy.exc import IntegrityError
 from db.models import *
 from db.database import *
 from db.schemas import AssetSchema
 from pydantic import TypeAdapter
-from config import redis_client
 from scripts.populate_assets import *
 from scripts.populate_prices import *
 from web.auth.auth import *
-import json
 import pytz
 
 ET = pytz.timezone("US/Eastern")
@@ -33,68 +32,65 @@ router = APIRouter(
 
 templates = Jinja2Templates(directory="/app/web/templates")
 
-@router.get("/assets")
-async def assets(request: Request, asset_filter: str = "all", db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token), context: dict = Depends(get_authenticated_template_context)):
+PAGE_SIZE = 50
 
-    asset_filter = request.query_params.get('filter', False)
+@router.get("/assets")
+async def assets(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token), context: dict = Depends(get_authenticated_template_context)):
+
+    asset_filter = request.query_params.get('filter', 'all')
+    q = request.query_params.get('q', '').strip()
+    page = max(1, int(request.query_params.get('page', 1)))
+    offset = (page - 1) * PAGE_SIZE
 
     watchlist_ids = set(
         (await db.scalars(select(WatchList.asset_id).where(WatchList.user_id == current_user.id))).all()
     )
 
-    cache_key = f"assets:{asset_filter}"
-    
-    cached_data = await redis_client.get(cache_key)
-
-    if cached_data:
-        rows = json.loads(cached_data)   
-    
     if asset_filter == 'sp500':
-        query = (
-            select(Asset)
-            .where(Asset.is_sp500 == True)
-            .order_by(Asset.symbol.asc())
-        )
-        result = await db.execute(query)
-        raw_rows = result.scalars().all()
-        
+        base = select(Asset).where(Asset.is_sp500 == True)
     elif asset_filter == 'crypto':
-        query = (
-            select(Asset)
-            .where(Asset.asset_class == "crypto")
-            .order_by(Asset.symbol.asc())
-        )
-        result = await db.execute(query)
-        raw_rows = result.scalars().all()
-
+        base = select(Asset).where(Asset.asset_class == "crypto")
     elif asset_filter == 'watchlist':
-        query = (
+        watchlist_base = (
             select(WatchList)
             .where(WatchList.user_id == current_user.id)
             .options(selectinload(WatchList.asset))
         )
-        watchlist_assets = (await db.scalars(query)).all()
-        raw_rows = [item.asset for item in watchlist_assets]
-
+        all_watchlist = (await db.scalars(watchlist_base)).all()
+        raw_rows = [item.asset for item in all_watchlist if item.asset]
+        if q:
+            raw_rows = [a for a in raw_rows if q.lower() in a.symbol.lower() or q.lower() in (a.name or '').lower()]
+        total = len(raw_rows)
+        total_pages = math.ceil(total / PAGE_SIZE) if total else 1
+        raw_rows = raw_rows[offset:offset + PAGE_SIZE]
+        rows = [a.model_dump() for a in TypeAdapter(list[AssetSchema]).validate_python(raw_rows)]
+        return templates.TemplateResponse("assets.html", {
+            "request": request, "assets": rows, "selected": asset_filter,
+            "watchlist_ids": watchlist_ids, "page": page, "total_pages": total_pages, "q": q,
+            **context
+        })
     else:
-        query = (
-            select(Asset)
-            .order_by(Asset.symbol.asc())
-        )
-        result = await db.execute(query)
-        raw_rows = result.scalars().all()
+        base = select(Asset)
 
-    assets = TypeAdapter(list[AssetSchema]).validate_python(raw_rows)
+    if q:
+        base = base.where(Asset.symbol.ilike(f'%{q}%') | Asset.name.ilike(f'%{q}%'))
 
-    rows = [asset.model_dump() for asset in assets]
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    total_pages = math.ceil(total / PAGE_SIZE) if total else 1
 
-    await redis_client.setex(cache_key, 300, json.dumps(rows))  # Cache for 5 minutes
+    result = await db.execute(base.order_by(Asset.symbol.asc()).limit(PAGE_SIZE).offset(offset))
+    raw_rows = result.scalars().all()
+
+    rows = [a.model_dump() for a in TypeAdapter(list[AssetSchema]).validate_python(raw_rows)]
 
     return templates.TemplateResponse("assets.html", {
         "request": request,
         "assets": rows,
         "selected": asset_filter,
         "watchlist_ids": watchlist_ids,
+        "page": page,
+        "total_pages": total_pages,
+        "q": q,
         **context
     })
 

@@ -3,25 +3,24 @@
 {% block content %}
 <!-- <h2>Assets</h2> -->
 
+<form method="get" id="filterForm">
 <div class="ui two column grid">
     <div class="left floated column">
-        <form method="get">
-            <select name="filter" class="ui dropdown" onchange="this.form.submit()">
-                <option value="all"{% if selected == 'all' %}selected{% endif %}>All</option>
-                <option value="sp500" {% if selected == 'sp500' %}selected{% endif %}>SP500</option>
-                <option value="crypto" {% if selected == 'crypto' %}selected{% endif %}>Crypto</option>
-                <option value="watchlist" {% if selected == 'watchlist' %}selected{% endif %}>Watchlist</option>
-            </select>
-        </form>
+        <select name="filter" class="ui dropdown" onchange="this.form.submit()">
+            <option value="all"{% if selected == 'all' %}selected{% endif %}>All</option>
+            <option value="sp500" {% if selected == 'sp500' %}selected{% endif %}>SP500</option>
+            <option value="crypto" {% if selected == 'crypto' %}selected{% endif %}>Crypto</option>
+            <option value="watchlist" {% if selected == 'watchlist' %}selected{% endif %}>Watchlist</option>
+        </select>
     </div>
-
     <div class="right floated column">
         <div class="right floated ui small icon input">
-            <input type="text" placeholder="Search ..." id="searchInput" onkeyup="search(event)">
-            <i class="search icon"></i>
+            <input type="text" name="q" value="{{ q }}" placeholder="Search ..." id="searchInput">
+            <i class="search icon" style="cursor:pointer;" onclick="document.getElementById('filterForm').submit()"></i>
         </div>
     </div>
 </div>
+</form>
 
 <table class="ui striped table" id="assetTable">
     <thead>
@@ -45,25 +44,36 @@
     {% endfor %}
 </table>
 
+{% if total_pages > 1 %}
+<div class="ui pagination menu" style="margin-top: 16px;">
+    {% if page > 1 %}
+    <a class="item" href="?filter={{ selected }}&q={{ q }}&page={{ page - 1 }}">&laquo; Prev</a>
+    {% else %}
+    <div class="disabled item">&laquo; Prev</div>
+    {% endif %}
+
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <div class="active item">{{ p }}</div>
+        {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+        <a class="item" href="?filter={{ selected }}&q={{ q }}&page={{ p }}">{{ p }}</a>
+        {% elif p == page - 3 or p == page + 3 %}
+        <div class="disabled item">…</div>
+        {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a class="item" href="?filter={{ selected }}&q={{ q }}&page={{ page + 1 }}">Next &raquo;</a>
+    {% else %}
+    <div class="disabled item">Next &raquo;</div>
+    {% endif %}
+</div>
+{% endif %}
+
 <script>
-    function search(event) {
-        let searchtext = document.getElementById("searchInput").value.toLowerCase();
-        let table = document.getElementById("assetTable")
-        let rows = table.getElementsByTagName("tr")
-
-        for (let i = 1; i < rows.length; i++) {
-            let cells = rows[i].getElementsByTagName("td");
-            let symbol = cells[0].textContent.toLowerCase();
-            let name = cells[1].textContent.toLowerCase();
-
-            if(symbol.includes(searchtext) || name.includes(searchtext)) {
-                rows[i].style.display = "";
-            }
-            else {
-                rows[i].style.display = "none";
-            }
-        }
-    }
+    document.getElementById('searchInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') document.getElementById('filterForm').submit();
+    });
 </script>
 
 {% endblock %}
