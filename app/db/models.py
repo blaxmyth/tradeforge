@@ -59,6 +59,20 @@ class AssetStrategy(Base):
     config = Column(JSON, nullable=True)
     assets = relationship("Asset", foreign_keys=[asset_id], uselist=True)
 
+class SignalLog(Base):
+    __tablename__ = "signal_log"
+
+    id            = Column(Integer, primary_key=True)
+    strategy_name = Column(String, nullable=False)
+    symbol        = Column(String, nullable=False)
+    direction     = Column(String, nullable=False)
+    entry_price   = Column(Float)
+    or_high       = Column(Float)
+    or_low        = Column(Float)
+    entry_time    = Column(String)
+    fired_at      = Column(DateTime, nullable=False)
+    config_snapshot = Column(JSON)
+
 class User(Base):
     __tablename__ = "user"
 

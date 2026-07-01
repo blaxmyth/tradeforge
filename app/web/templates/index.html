@@ -1,11 +1,140 @@
 {% extends "layout.html" %}
 
-{% block title %}
-
-<title>Tradeforge</title>
-
-{% endblock %}
+{% block title %}<title>Dashboard | TradeForge</title>{% endblock %}
 
 {% block content %}
+
+<!-- ── Stat row ────────────────────────────────────────────────────────────── -->
+<div class="ui three statistics" style="margin-bottom:24px;">
+    <div class="statistic">
+        <div class="value">{{ watchlist | length }}</div>
+        <div class="label">Watchlist</div>
+    </div>
+    <div class="statistic">
+        <div class="value">{{ strategies | length }}</div>
+        <div class="label">Strategies</div>
+    </div>
+    <div class="statistic">
+        <div class="value">{{ signals | selectattr('today') | list | length }}</div>
+        <div class="label">Signals Today</div>
+    </div>
+</div>
+
+<!-- ── Two-column layout ──────────────────────────────────────────────────── -->
+<div class="ui two column stackable grid">
+
+    <!-- Watchlist -->
+    <div class="ten wide column">
+        <h3 class="ui header" style="margin-bottom:10px;">
+            <i class="star outline icon"></i>
+            <div class="content">Watchlist</div>
+        </h3>
+        {% if not watchlist %}
+        <div class="ui message">
+            No assets on your watchlist yet. Browse <a href="/assets">Assets</a> and add some.
+        </div>
+        {% else %}
+        <table class="ui very compact selectable table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th style="text-align:right;">Last Price</th>
+                    <th style="text-align:right;">Change</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in watchlist %}
+                <tr style="cursor:pointer;" onclick="location.href='/asset/{{ item.symbol }}'">
+                    <td><strong>{{ item.symbol }}</strong></td>
+                    <td style="color:#aaa;">{{ item.name or '—' }}</td>
+                    <td style="text-align:right; font-family:monospace;">
+                        {% if item.price %}${{ "%.2f"|format(item.price) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right; font-family:monospace;">
+                        {% if item.change is not none %}
+                            {% if item.change >= 0 %}
+                                <span style="color:#26a69a;">+{{ "%.2f"|format(item.change) }}%</span>
+                            {% else %}
+                                <span style="color:#ef5350;">{{ "%.2f"|format(item.change) }}%</span>
+                            {% endif %}
+                        {% else %}
+                            <span style="color:#555;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- Strategies + Signals -->
+    <div class="six wide column">
+
+        <!-- Strategies -->
+        <h3 class="ui header" style="margin-bottom:10px;">
+            <i class="chart line icon"></i>
+            <div class="content">Strategies</div>
+        </h3>
+        {% if not strategies %}
+        <div class="ui message">No strategies found.</div>
+        {% else %}
+        <div class="ui relaxed divided list" style="margin-bottom:24px;">
+            {% for s in strategies %}
+            <div class="item" style="padding:10px 0;">
+                <div class="content">
+                    <a class="header" href="/strategy/{{ s.id }}" style="font-size:14px;">{{ s.name }}</a>
+                    <div class="description" style="margin-top:4px; color:#888; font-size:12px;">
+                        {{ s.asset_count }} asset{{ 's' if s.asset_count != 1 }}
+                        {% if s.config %}
+                            &nbsp;·&nbsp;
+                            OR {{ s.config.get('or_start','09:30') }}–{{ s.config.get('or_end','09:45') }}
+                            &nbsp;·&nbsp;
+                            {{ s.config.get('timeframe','1min') }}
+                            &nbsp;·&nbsp;
+                            buffer {{ s.config.get('buffer_pct', 0) }}%
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Signal history -->
+        <h3 class="ui header" style="margin-bottom:10px;">
+            <i class="bolt icon"></i>
+            <div class="content">Recent Signals</div>
+        </h3>
+        {% if not signals %}
+        <div class="ui message" style="font-size:13px;">No signals recorded yet.</div>
+        {% else %}
+        <table class="ui very compact table" style="font-size:12px;">
+            <thead>
+                <tr><th>Symbol</th><th>Dir</th><th>Price</th><th>When</th></tr>
+            </thead>
+            <tbody>
+            {% for sig in signals %}
+                <tr>
+                    <td>
+                        <a href="/asset/{{ sig.symbol }}">{{ sig.symbol }}</a>
+                        {% if sig.today %}<span style="color:#ff9800; font-size:10px;"> ●</span>{% endif %}
+                    </td>
+                    <td style="color:{{ '#26a69a' if sig.direction == 'breakout' else '#ef5350' }};">
+                        {{ '↑' if sig.direction == 'breakout' else '↓' }}
+                    </td>
+                    <td style="font-family:monospace;">
+                        {% if sig.price %}${{ "%.2f"|format(sig.price) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="color:#888;">{{ sig.fired_at }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+    </div>
+</div>
 
 {% endblock %}

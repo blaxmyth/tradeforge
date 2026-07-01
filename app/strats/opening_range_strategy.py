@@ -35,7 +35,7 @@ from sqlalchemy.future import select
 
 from config import DISCORD_WEBHOOK, REDIS_HOST, REDIS_PORT
 from db.database import SyncSessionLocal
-from db.models import Asset, AssetStrategy, Strategy
+from db.models import Asset, AssetStrategy, SignalLog, Strategy
 
 TIMEFRAME_TABLE: dict[str, tuple[str, str]] = {
     "1min":  ("asset_price",       "datetime"),
@@ -380,6 +380,20 @@ def opening_range_strategy() -> None:
         )
         print(f"[ORS] SIGNAL — {message}")
         _send_notification(message)
+
+        with SyncSessionLocal() as session:
+            session.add(SignalLog(
+                strategy_name   = STRATEGY_NAME,
+                symbol          = symbol,
+                direction       = direction,
+                entry_price     = trade["entry_price"],
+                or_high         = trade["or_high"],
+                or_low          = trade["or_low"],
+                entry_time      = trade["entry_time"],
+                fired_at        = datetime.now(),
+                config_snapshot = cfg,
+            ))
+            session.commit()
 
         ttl = int(
             (datetime.combine(today + timedelta(days=1), time(0, 0)) - datetime.now())

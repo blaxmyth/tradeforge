@@ -249,14 +249,18 @@ async def get_indicators(symbol: str, timeframe: str = "1min", db: AsyncSession 
 
 
 @router.get("/asset/{symbol}")
-async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db), context: dict = Depends(get_authenticated_template_context)):
+async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token), context: dict = Depends(get_authenticated_template_context)):
 
     asset = await db.scalar(select(Asset).where(Asset.symbol == symbol))
 
-    strategies_query = select(Strategy)
-    strategies = (await db.scalars(strategies_query)).all()
+    strategies = (await db.scalars(select(Strategy))).all()
 
-    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "strategies": strategies, **context})
+    on_watchlist = await db.scalar(
+        select(WatchList.asset_id)
+        .where(WatchList.asset_id == asset.id, WatchList.user_id == current_user.id)
+    ) is not None
+
+    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "strategies": strategies, "on_watchlist": on_watchlist, **context})
 
 @router.get("/add_to_watchlist/{asset_id}")
 async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):
@@ -267,18 +271,17 @@ async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = D
     except IntegrityError:
         await db.rollback()
 
-    return RedirectResponse(url="/assets?filter=watchlist", status_code=303)
+    back = request.headers.get("referer", "/assets?filter=watchlist")
+    return RedirectResponse(url=back, status_code=303)
 
 @router.get("/delete_from_watchlist/{asset_id}")
 async def delete_from_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):
 
-    query = delete(WatchList).where(WatchList.asset_id == asset_id, WatchList.user_id == current_user.id)
-
-    await db.execute(query)
-
+    await db.execute(delete(WatchList).where(WatchList.asset_id == asset_id, WatchList.user_id == current_user.id))
     await db.commit()
 
-    return RedirectResponse(url="/assets?filter=watchlist", status_code=303)
+    back = request.headers.get("referer", "/assets?filter=watchlist")
+    return RedirectResponse(url=back, status_code=303)
 
 @router.get("/populate_assets")
 async def get_assets(request: Request, db: AsyncSession = Depends(get_db)):

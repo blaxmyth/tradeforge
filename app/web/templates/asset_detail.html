@@ -3,15 +3,26 @@
 {% block content %}
 <div class="asset-label" style="margin-bottom: 16px;">
     <h2><a href="/assets">Assets</a> >> {{ asset.symbol }} >> {{ asset.name }}</h2>
-    <form method="POST" action="/apply_strategy" style="display:inline-block;">
-        <select name="strategy_id" class="ui dropdown">
-            {% for strategy in strategies %}
-            <option value="{{strategy.id}}">{{strategy.name}}</option>
-            {% endfor %}
-        </select>
-        <input type="hidden" name="asset_id" value="{{ asset.id }}">
-        <input type="submit" value="Apply Strategy" class="ui button">
-    </form>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        {% if on_watchlist %}
+        <a href="/delete_from_watchlist/{{ asset.id }}" class="ui mini red basic button">
+            <i class="star icon"></i> Remove from Watchlist
+        </a>
+        {% else %}
+        <a href="/add_to_watchlist/{{ asset.id }}" class="ui mini teal basic button">
+            <i class="star outline icon"></i> Add to Watchlist
+        </a>
+        {% endif %}
+        <form method="POST" action="/apply_strategy" style="display:inline-flex; gap:6px; align-items:center; margin:0;">
+            <select name="strategy_id" class="ui dropdown">
+                {% for strategy in strategies %}
+                <option value="{{strategy.id}}">{{strategy.name}}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="asset_id" value="{{ asset.id }}">
+            <input type="submit" value="Apply Strategy" class="ui mini button">
+        </form>
+    </div>
 </div>
 
 <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
@@ -200,8 +211,12 @@ const allSeries = [
     stochKSeries, stochDSeries, adxSeries, adxPosSeries, adxNegSeries,
 ];
 
-async function loadBars(timeframe) {
+let currentTf = '1min';
+
+async function loadBars(timeframe, preserveRange = false) {
     document.getElementById('chart-status').textContent = 'Loading…';
+
+    const savedRange = preserveRange ? mainChart.timeScale().getVisibleLogicalRange() : null;
 
     const [barsResp, indResp] = await Promise.all([
         fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
@@ -218,15 +233,14 @@ async function loadBars(timeframe) {
         return;
     }
 
-    // Set all series data before fitting (so sync works correctly)
     candleSeries.setData(bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close })));
 
-    ema9Series.setData(ind.ema9        || []);
-    ema20Series.setData(ind.ema20      || []);
-    ema50Series.setData(ind.ema50      || []);
-    bbUpperSeries.setData(ind.bb_upper  || []);
-    bbMidSeries.setData(ind.bb_middle   || []);
-    bbLowerSeries.setData(ind.bb_lower  || []);
+    ema9Series.setData(ind.ema9          || []);
+    ema20Series.setData(ind.ema20        || []);
+    ema50Series.setData(ind.ema50        || []);
+    bbUpperSeries.setData(ind.bb_upper   || []);
+    bbMidSeries.setData(ind.bb_middle    || []);
+    bbLowerSeries.setData(ind.bb_lower   || []);
 
     rsiSeries.setData(ind.rsi              || []);
     macdLineSeries.setData(ind.macd        || []);
@@ -238,8 +252,11 @@ async function loadBars(timeframe) {
     adxPosSeries.setData(ind.adx_pos       || []);
     adxNegSeries.setData(ind.adx_neg       || []);
 
-    // fitContent on main chart triggers sync to all sub-charts
-    mainChart.timeScale().fitContent();
+    if (savedRange) {
+        mainChart.timeScale().setVisibleLogicalRange(savedRange);
+    } else {
+        mainChart.timeScale().fitContent();
+    }
 
     const last = bars[bars.length - 1];
     document.getElementById('chart-status').textContent =
@@ -265,10 +282,14 @@ document.querySelectorAll('.tf-btn').forEach(btn => {
     btn.addEventListener('click', function () {
         document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
-        loadBars(this.dataset.tf);
+        currentTf = this.dataset.tf;
+        loadBars(currentTf);
     });
 });
 
-loadBars('1min');
+loadBars(currentTf);
+
+// ── Auto-refresh every 60 seconds (preserves zoom/scroll position) ─
+setInterval(() => loadBars(currentTf, true), 60_000);
 </script>
 {% endblock %}

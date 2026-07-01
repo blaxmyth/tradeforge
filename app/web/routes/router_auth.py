@@ -89,6 +89,13 @@ async def login_for_access_token(
     response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True)
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.post("/api/refresh")
+async def refresh_token(response: Response, current_user: User = Depends(get_current_user_from_token)):
+    """Slide the session window — called by the client every 20 minutes."""
+    token = create_access_token(data={"sub": current_user.email})
+    response.set_cookie(key="access_token", value=f"Bearer {token}", httponly=True)
+    return {"ok": True}
+
 # Protected route that requires authentication
 @router.get("/protected")
 async def protected_route(current_user: User = Depends(get_current_user_from_token)):
