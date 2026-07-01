@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import delete, text, func
 import math
+import pandas as pd
 from sqlalchemy.exc import IntegrityError
 from db.models import *
 from db.database import *
@@ -130,6 +131,121 @@ async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: A
     ]
 
     return JSONResponse(content=bars)
+
+
+@router.get("/api/asset/{symbol}/indicators")
+async def get_indicators(symbol: str, timeframe: str = "1min", db: AsyncSession = Depends(get_db)):
+    if timeframe not in _TIMEFRAME_TABLE:
+        return JSONResponse(status_code=400, content={"error": "invalid timeframe"})
+
+    asset = await db.scalar(select(Asset).where(Asset.symbol == symbol))
+    if not asset:
+        return JSONResponse(status_code=404, content={"error": "asset not found"})
+
+    table, time_col = _TIMEFRAME_TABLE[timeframe]
+
+    result = await db.execute(
+        text(f"""
+            SELECT {time_col} AS t, high, low, close
+            FROM {table}
+            WHERE asset_id = :asset_id
+            ORDER BY {time_col} DESC
+            LIMIT 500
+        """),
+        {"asset_id": asset.id},
+    )
+    rows = result.fetchall()
+    if len(rows) < 2:
+        return JSONResponse(content={})
+    rows = list(reversed(rows))
+
+    df = pd.DataFrame(rows, columns=["t", "high", "low", "close"])
+    close = df["close"].astype(float)
+    high  = df["high"].astype(float)
+    low   = df["low"].astype(float)
+
+    # EMAs
+    df["ema9"]  = close.ewm(span=9,  adjust=False).mean()
+    df["ema20"] = close.ewm(span=20, adjust=False).mean()
+    df["ema50"] = close.ewm(span=50, adjust=False).mean()
+
+    # Bollinger Bands (SMA ± 2σ over 20 bars)
+    bb_mid        = close.rolling(20).mean()
+    bb_std        = close.rolling(20).std()
+    df["bb_upper"]  = bb_mid + 2 * bb_std
+    df["bb_middle"] = bb_mid
+    df["bb_lower"]  = bb_mid - 2 * bb_std
+
+    # RSI (Wilder EMA, length=14)
+    delta    = close.diff()
+    avg_gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+    avg_loss = (-delta).clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+    rs       = avg_gain / avg_loss.replace(0, float("nan"))
+    df["rsi"] = 100 - (100 / (1 + rs))
+
+    # MACD (12, 26, 9)
+    macd_line     = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+    macd_signal   = macd_line.ewm(span=9, adjust=False).mean()
+    df["macd"]        = macd_line
+    df["macd_signal"] = macd_signal
+    df["macd_hist"]   = macd_line - macd_signal
+
+    # Stochastic (14, 3, 3)
+    denom        = (high.rolling(14).max() - low.rolling(14).min()).replace(0, float("nan"))
+    fast_k       = 100 * (close - low.rolling(14).min()) / denom
+    df["stoch_k"] = fast_k.rolling(3).mean()
+    df["stoch_d"] = df["stoch_k"].rolling(3).mean()
+
+    # ADX (14) with Wilder EMA
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    dm_plus_raw  = high.diff()
+    dm_minus_raw = -low.diff()
+    dm_plus  = dm_plus_raw.where((dm_plus_raw  > dm_minus_raw) & (dm_plus_raw  > 0), 0.0)
+    dm_minus = dm_minus_raw.where((dm_minus_raw > dm_plus_raw)  & (dm_minus_raw > 0), 0.0)
+    atr14    = tr.ewm(alpha=1/14, adjust=False).mean()
+    di_plus  = 100 * dm_plus.ewm(alpha=1/14,  adjust=False).mean() / atr14
+    di_minus = 100 * dm_minus.ewm(alpha=1/14, adjust=False).mean() / atr14
+    di_sum   = (di_plus + di_minus).replace(0, float("nan"))
+    dx       = 100 * (di_plus - di_minus).abs() / di_sum
+    df["adx"]     = dx.ewm(alpha=1/14, adjust=False).mean()
+    df["adx_pos"] = di_plus
+    df["adx_neg"] = di_minus
+
+    df = df.tail(300)
+
+    def to_series(col):
+        out = []
+        for row in df.itertuples(index=False):
+            v = getattr(row, col)
+            if not pd.isna(v):
+                out.append({"time": int(ET.localize(row.t).timestamp()), "value": round(float(v), 4)})
+        return out
+
+    hist = []
+    for row in df.itertuples(index=False):
+        v = row.macd_hist
+        if not pd.isna(v):
+            fv = float(v)
+            hist.append({"time": int(ET.localize(row.t).timestamp()), "value": round(fv, 4),
+                         "color": "#26a69a" if fv >= 0 else "#ef5350"})
+
+    return JSONResponse(content={
+        "ema9":        to_series("ema9"),
+        "ema20":       to_series("ema20"),
+        "ema50":       to_series("ema50"),
+        "bb_upper":    to_series("bb_upper"),
+        "bb_middle":   to_series("bb_middle"),
+        "bb_lower":    to_series("bb_lower"),
+        "rsi":         to_series("rsi"),
+        "macd":        to_series("macd"),
+        "macd_signal": to_series("macd_signal"),
+        "macd_hist":   hist,
+        "stoch_k":     to_series("stoch_k"),
+        "stoch_d":     to_series("stoch_d"),
+        "adx":         to_series("adx"),
+        "adx_pos":     to_series("adx_pos"),
+        "adx_neg":     to_series("adx_neg"),
+    })
 
 
 @router.get("/asset/{symbol}")

@@ -24,6 +24,8 @@ DB_NAME = os.getenv("DB_NAME", "tradeforge")
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"

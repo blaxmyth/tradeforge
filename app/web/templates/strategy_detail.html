@@ -1,35 +1,338 @@
 {% extends "layout.html" %}
 
-{% block title %}
-
-<title>Strategy | Tradeforge</title>
-
-{% endblock %}
+{% block title %}<title>{{ strategy.name }} | TradeForge</title>{% endblock %}
 
 {% block content %}
-<h2>{{ strategy.name }}</h2>
+<h2 style="margin-bottom:4px;">{{ strategy.name }}</h2>
+<p style="color:#888; margin-bottom:24px;">
+    One config applies to every asset linked to this strategy. Backtest or sweep per-asset to compare performance.
+</p>
 
+<!-- ── Global Config Form ──────────────────────────────────────────────────── -->
+{% set c = global_config %}
+<div class="ui segment" style="margin-bottom:24px;">
+    <h3 style="margin-top:0; margin-bottom:16px;">
+        Strategy Parameters
+        <span style="font-size:13px; font-weight:normal; color:#888;">— applied to all linked assets</span>
+    </h3>
+    <form id="global-config-form" class="ui form">
+        <div class="four fields">
+            <div class="field">
+                <label>OR Start</label>
+                <select name="or_start" class="ui dropdown">
+                    {% for t in ["09:30","09:35","09:40","09:45"] %}
+                    <option value="{{ t }}" {% if c.or_start == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>OR End</label>
+                <select name="or_end" class="ui dropdown">
+                    {% for t in ["09:45","10:00","10:15","10:30","11:00"] %}
+                    <option value="{{ t }}" {% if c.or_end == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>Timeframe</label>
+                <select name="timeframe" class="ui dropdown">
+                    {% for tf in ["1min","5min","15min","1hr"] %}
+                    <option value="{{ tf }}" {% if c.timeframe == tf %}selected{% endif %}>{{ tf }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>Lookback Days <span style="color:#888;font-size:11px;">(backtest only)</span></label>
+                <input type="number" id="lookback-days" value="60" min="10" max="365">
+            </div>
+        </div>
+        <div class="four fields">
+            <div class="field">
+                <label>Buffer %
+                    <span style="color:#888;font-size:11px;">price must close N% beyond OR level</span>
+                </label>
+                <input type="number" name="buffer_pct" value="{{ c.buffer_pct }}" step="0.05" min="0" max="5">
+            </div>
+            <div class="field">
+                <label>Min Range %
+                    <span style="color:#888;font-size:11px;">skip days with a narrow OR</span>
+                </label>
+                <input type="number" name="min_range_pct" value="{{ c.min_range_pct }}" step="0.05" min="0" max="5">
+            </div>
+            <div class="field">
+                <label>Volume Multiplier
+                    <span style="color:#888;font-size:11px;">0 = disabled</span>
+                </label>
+                <input type="number" name="volume_mult" value="{{ c.volume_mult }}" step="0.1" min="0" max="10">
+            </div>
+            <div class="field" style="display:flex; gap:8px;">
+                <div style="flex:1;">
+                    <label>Stop %</label>
+                    <input type="number" name="stop_loss_pct" value="{{ c.stop_loss_pct }}" step="0.1" min="0.1" max="20">
+                </div>
+                <div style="flex:1;">
+                    <label>Target %</label>
+                    <input type="number" name="take_profit_pct" value="{{ c.take_profit_pct }}" step="0.1" min="0.1" max="20">
+                </div>
+            </div>
+        </div>
+        <button type="button" id="save-config-btn" class="ui primary mini button">Save Config</button>
+        <span id="save-status" style="font-size:12px; color:#888; margin-left:8px;"></span>
+    </form>
+</div>
+
+<!-- ── Assets Table ───────────────────────────────────────────────────────── -->
+{% if not assets %}
+<div class="ui message">No assets assigned yet. Use <strong>Apply Strategy</strong> on any asset's detail page.</div>
+{% else %}
 <table class="ui striped table">
     <thead>
         <tr>
             <th>Symbol</th>
             <th>Name</th>
             <th></th>
+            <th></th>
         </tr>
     </thead>
-    {% for asset in assets %}
-    <tr>
-        <td>{{ asset.symbol }}</td>
-        <td><a href="/asset/{{ asset.symbol }}">{{ asset.name }}</a></td>
-        <td>
-            <form method="POST" action="/delete_strategy">
-                <input type="hidden" name="strategy_id" value="{{ strategy.id }}">
-                <input type="hidden" name="asset_id" value="{{ asset.id }}">
-                <input type="submit" value="Delete" class="ui button right floated">
-            </form>
-        </td>
-    </tr>
+    <tbody>
+    {% for item in assets %}
+        <tr>
+            <td><a href="/asset/{{ item.symbol }}">{{ item.symbol }}</a></td>
+            <td>{{ item.name }}</td>
+            <td style="white-space:nowrap;">
+                <button class="ui mini teal button backtest-btn"  data-symbol="{{ item.symbol }}">Backtest</button>
+                <button class="ui mini violet button sweep-btn"   data-symbol="{{ item.symbol }}">Sweep Grid</button>
+            </td>
+            <td>
+                <form method="POST" action="/delete_strategy" style="margin:0;">
+                    <input type="hidden" name="strategy_id" value="{{ strategy.id }}">
+                    <input type="hidden" name="asset_id"    value="{{ item.id }}">
+                    <button type="submit" class="ui mini red basic button">Remove</button>
+                </form>
+            </td>
+        </tr>
+        <tr id="results-row-{{ item.symbol }}" style="display:none;">
+            <td colspan="4" style="padding:0;">
+                <div id="results-{{ item.symbol }}" style="padding:16px;"></div>
+            </td>
+        </tr>
     {% endfor %}
+    </tbody>
 </table>
+{% endif %}
 
+<script>
+const STRATEGY_ID = {{ strategy.id }};
+
+// ── read the global config form ───────────────────────────────────────────────
+function globalConfig() {
+    const f = document.getElementById('global-config-form');
+    const d = Object.fromEntries(new FormData(f));
+    return {
+        or_start:        d.or_start,
+        or_end:          d.or_end,
+        timeframe:       d.timeframe,
+        buffer_pct:      parseFloat(d.buffer_pct),
+        min_range_pct:   parseFloat(d.min_range_pct),
+        volume_mult:     parseFloat(d.volume_mult),
+        stop_loss_pct:   parseFloat(d.stop_loss_pct),
+        take_profit_pct: parseFloat(d.take_profit_pct),
+    };
+}
+
+function lookbackDays() {
+    return parseInt(document.getElementById('lookback-days').value) || 60;
+}
+
+// ── save global config ───────────────────────────────────────────────────────
+document.getElementById('save-config-btn').addEventListener('click', async () => {
+    const status = document.getElementById('save-status');
+    status.textContent = 'Saving…';
+    try {
+        await fetch(`/api/strategy/${STRATEGY_ID}/config`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(globalConfig()),
+        });
+        status.textContent = 'Saved ✓';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+    } catch (e) {
+        status.textContent = 'Save failed';
+    }
+});
+
+// ── result display helpers ────────────────────────────────────────────────────
+function showResults(sym, html) {
+    document.getElementById(`results-row-${sym}`).style.display = '';
+    document.getElementById(`results-${sym}`).innerHTML = html;
+}
+
+function outcomeColor(o) {
+    return o === 'win' ? '#26a69a' : o === 'loss' ? '#ef5350' : '#888';
+}
+
+function statBlock(label, value, color) {
+    return `<div>
+        <div style="font-size:20px;font-weight:bold;color:${color||'inherit'};">${value}</div>
+        <div style="font-size:11px;color:#888;">${label}</div>
+    </div>`;
+}
+
+function dirRow(label, d) {
+    if (!d || d.total === 0)
+        return `<div style="color:#555;font-size:12px;">${label}: no signals</div>`;
+    const pf = d.profit_factor === Infinity ? '∞' : d.profit_factor;
+    const c  = d.profit_factor >= 1.5 ? '#26a69a' : d.profit_factor >= 1.0 ? '#ff9800' : '#ef5350';
+    return `<div style="font-size:12px;padding:6px 10px;border-left:3px solid ${c};margin-bottom:4px;">
+        <strong>${label}</strong> &nbsp;
+        PF <span style="color:${c};">${pf}</span> &nbsp;|&nbsp;
+        WR ${d.win_rate}% &nbsp;|&nbsp;
+        ${d.wins}W / ${d.losses}L / ${d.timeouts}T &nbsp;|&nbsp;
+        avg win <span style="color:#26a69a;">+${d.avg_win_pct}%</span> &nbsp;
+        avg loss <span style="color:#ef5350;">${d.avg_loss_pct}%</span>
+    </div>`;
+}
+
+// ── render backtest results ───────────────────────────────────────────────────
+function renderBacktest(sym, data) {
+    if (data.error) {
+        showResults(sym, `<div class="ui red message">${data.error}</div>`); return;
+    }
+    if (data.total_signals === 0) {
+        showResults(sym, `<div class="ui message">No signals over the backtest period with these parameters.</div>`); return;
+    }
+
+    const pf      = data.profit_factor === Infinity ? '∞' : data.profit_factor;
+    const pfColor = data.profit_factor >= 1.5 ? '#26a69a' : data.profit_factor >= 1.0 ? '#ff9800' : '#ef5350';
+    const wrColor = data.win_rate >= 55 ? '#26a69a' : data.win_rate >= 45 ? '#ff9800' : '#ef5350';
+    const bd      = data.by_direction || {};
+
+    const stats = `
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px;">
+            ${statBlock('Profit Factor', pf, pfColor)}
+            ${statBlock('Win Rate', data.win_rate + '%', wrColor)}
+            ${statBlock('Signals', data.total_signals)}
+            ${statBlock('Wins',    data.wins,     '#26a69a')}
+            ${statBlock('Losses',  data.losses,   '#ef5350')}
+            ${statBlock('Timeouts',data.timeouts, '#888')}
+            ${statBlock('Avg Win', '+' + data.avg_win_pct + '%', '#26a69a')}
+            ${statBlock('Avg Loss', data.avg_loss_pct + '%',     '#ef5350')}
+        </div>
+        <div style="margin-bottom:10px;">
+            ${dirRow('↑ Breakout',  bd.breakout)}
+            ${dirRow('↓ Breakdown', bd.breakdown)}
+        </div>`;
+
+    const tradeRows = data.trades.map(t => `<tr>
+        <td>${t.date}</td>
+        <td style="color:${t.direction==='breakout'?'#26a69a':'#ef5350'};">${t.direction==='breakout'?'↑':'↓'} ${t.direction}</td>
+        <td>${t.entry_time}</td>
+        <td>$${t.entry_price}</td>
+        <td>$${t.exit_price}</td>
+        <td style="color:${t.pct_change>=0?'#26a69a':'#ef5350'};">${t.pct_change>=0?'+':''}${t.pct_change}%</td>
+        <td>$${t.or_low} – $${t.or_high}</td>
+        <td style="color:${outcomeColor(t.outcome)};">${t.outcome}</td>
+    </tr>`).join('');
+
+    const log = `<details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:#aaa;font-size:12px;">Trade log (${data.trades.length} entries)</summary>
+        <table class="ui very compact small table" style="margin-top:8px;">
+            <thead><tr><th>Date</th><th>Dir</th><th>Time</th><th>Entry $</th><th>Exit $</th><th>P&L %</th><th>OR Range</th><th>Outcome</th></tr></thead>
+            <tbody>${tradeRows}</tbody>
+        </table>
+    </details>`;
+
+    showResults(sym, stats + log);
+}
+
+// ── render sweep results ──────────────────────────────────────────────────────
+function renderSweep(sym, results) {
+    if (!results.length || results[0].error) {
+        showResults(sym, `<div class="ui red message">${(results[0]||{}).error||'No results'}</div>`); return;
+    }
+
+    const top  = results.slice(0, 20);
+    const rows = top.map((r, i) => {
+        const pf = r.profit_factor === Infinity ? '∞' : r.profit_factor;
+        const c  = r.profit_factor >= 1.5 ? '#26a69a' : r.profit_factor >= 1.0 ? '#ff9800' : '#ef5350';
+        const cfg = r.config;
+        return `<tr>
+            <td>${i+1}</td>
+            <td style="color:${c};font-weight:bold;">${pf}</td>
+            <td>${r.win_rate}%</td>
+            <td>${r.total_signals}</td>
+            <td>${r.wins}/${r.losses}/${r.timeouts}</td>
+            <td>${cfg.or_end}</td>
+            <td>${cfg.buffer_pct}%</td>
+            <td>${cfg.min_range_pct}%</td>
+            <td>
+                <button class="ui mini teal button apply-cfg-btn" data-sym="${sym}" data-config='${JSON.stringify(cfg)}'>
+                    Apply
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    showResults(sym, `
+        <p style="font-size:12px;color:#888;margin-bottom:8px;">
+            Top ${top.length} of ${results.length} combinations — click Apply to load params into the global config form.
+        </p>
+        <div style="overflow-x:auto;">
+        <table class="ui very compact small table">
+            <thead><tr>
+                <th>#</th><th>PF</th><th>Win%</th><th>Signals</th>
+                <th>W/L/T</th><th>OR End</th><th>Buffer</th><th>Min Range</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>`);
+
+    // wire Apply buttons inside the freshly rendered HTML
+    document.querySelectorAll('.apply-cfg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cfg  = JSON.parse(btn.dataset.config);
+            const form = document.getElementById('global-config-form');
+            Object.entries(cfg).forEach(([k, v]) => {
+                const el = form.querySelector(`[name="${k}"]`);
+                if (el) el.value = v;
+            });
+            document.getElementById(`results-row-${btn.dataset.sym}`).style.display = 'none';
+        });
+    });
+}
+
+// ── asset-level buttons ───────────────────────────────────────────────────────
+document.querySelectorAll('.backtest-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const sym = btn.dataset.symbol;
+        showResults(sym, '<div style="color:#888;padding:12px;">Running backtest…</div>');
+        try {
+            const resp = await fetch(`/api/asset/${sym}/backtest`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ config: globalConfig(), days: lookbackDays() }),
+            });
+            renderBacktest(sym, await resp.json());
+        } catch (e) {
+            showResults(sym, `<div class="ui red message">Request failed: ${e}</div>`);
+        }
+    });
+});
+
+document.querySelectorAll('.sweep-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const sym = btn.dataset.symbol;
+        showResults(sym, '<div style="color:#888;padding:12px;">Running parameter sweep (48 combinations)…</div>');
+        try {
+            const resp = await fetch(`/api/asset/${sym}/sweep`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ base_config: globalConfig(), days: lookbackDays() }),
+            });
+            renderSweep(sym, await resp.json());
+        } catch (e) {
+            showResults(sym, `<div class="ui red message">Request failed: ${e}</div>`);
+        }
+    });
+});
+</script>
 {% endblock %}

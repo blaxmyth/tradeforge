@@ -1,6 +1,7 @@
 from celery import Celery
 from celery.schedules import crontab
 from scripts.populate_assets import populate_assets
+from strats.opening_range_strategy import opening_range_strategy
 from db.models import *
 from db.database import *
 import asyncio
@@ -18,8 +19,13 @@ celery.conf.timezone = "US/Eastern"
 celery.conf.beat_schedule = {
     "run-populate-assets": {
         "task": "tasks.tasks.run_populate_assets",
-        "schedule": crontab(minute=0, hour=23, day_of_week='1-5'),  
-    }
+        "schedule": crontab(minute=0, hour=23, day_of_week='1-5'),
+    },
+    # Runs every minute 9 AM–4 PM ET weekdays; script itself enforces 9:45 minimum
+    "run-opening-range-strategy": {
+        "task": "tasks.tasks.run_opening_range_strategy",
+        "schedule": crontab(minute="*/1", hour="9-15", day_of_week="1-5"),
+    },
 }
 
 @celery.task
@@ -35,3 +41,8 @@ def run_populate_assets():
 async def _run():
     async with async_session_maker() as session:
         await populate_assets(session)
+
+
+@celery.task
+def run_opening_range_strategy():
+    opening_range_strategy()

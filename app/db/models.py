@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, String, Boolean, ForeignKey, Date, DateTime, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, Float, String, Boolean, ForeignKey, Date, DateTime, Index, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -49,12 +49,14 @@ class Strategy(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    config = Column(JSON, nullable=True)
 
 class AssetStrategy(Base):
     __tablename__ = "asset_strategy"
 
     asset_id = Column(ForeignKey("asset.id"), nullable=False, primary_key=True)
     strategy_id = Column(ForeignKey("strategy.id"), nullable=False)
+    config = Column(JSON, nullable=True)
     assets = relationship("Asset", foreign_keys=[asset_id], uselist=True)
 
 class User(Base):

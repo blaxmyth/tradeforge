@@ -14,7 +14,7 @@
     </form>
 </div>
 
-<div style="margin-bottom: 8px;">
+<div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
     <div class="ui small buttons">
         <button class="ui button tf-btn active" data-tf="1min">1 Min</button>
         <button class="ui button tf-btn" data-tf="5min">5 Min</button>
@@ -22,30 +22,22 @@
         <button class="ui button tf-btn" data-tf="1hr">1 Hr</button>
         <button class="ui button tf-btn" data-tf="1day">1 Day</button>
     </div>
+    <div style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="ind-btn" data-ind="emas"   style="background:#ff9800;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">EMA</button>
+        <button class="ind-btn" data-ind="bbands" style="background:#e6b800;color:#000;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">BB</button>
+        <button class="ind-btn" data-ind="rsi"    style="background:#e91e63;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">RSI</button>
+        <button class="ind-btn" data-ind="macd"   style="background:#2196f3;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">MACD</button>
+        <button class="ind-btn" data-ind="stoch"  style="background:#4caf50;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Stoch</button>
+        <button class="ind-btn" data-ind="adx"    style="background:#9c27b0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">ADX</button>
+    </div>
 </div>
 
-<div id="chart-container" style="width:100%; height:500px; border-radius:4px; overflow:hidden;"></div>
-<div id="chart-status" style="color:#999; font-size:12px; margin: 6px 0 20px;"></div>
-
-<!-- <div class="tradingview-widget-container" style="margin-bottom: 24px;">
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-    <script type="text/javascript">
-        new TradingView.widget({
-            "width": "100%",
-            "height": 500,
-            "symbol": "{{asset.exchange}}:{{asset.symbol}}",
-            "interval": "1",
-            "timezone": "America/New_York",
-            "theme": "dark",
-            "style": "1",
-            "locale": "en",
-            "toolbar_bg": "#f1f3f6",
-            "enable_publishing": false,
-            "allow_symbol_change": false,
-            "container_id": "tradingview_detail"
-        });
-    </script>
-</div> -->
+<div id="chart-container" style="width:100%;height:400px;overflow:hidden;"></div>
+<div id="rsi-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">RSI(14)</span></div>
+<div id="macd-pane"  class="ind-pane" style="width:100%;height:120px;overflow:hidden;position:relative;"><span class="pane-label">MACD(12,26,9)</span></div>
+<div id="stoch-pane" class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">Stoch(14,3,3)</span></div>
+<div id="adx-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">ADX(14)</span></div>
+<div id="chart-status" style="color:#999;font-size:12px;margin:6px 0 20px;"></div>
 
 <table class="ui striped compact table">
     <thead>
@@ -65,101 +57,218 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-    const SYMBOL = "{{ asset.symbol }}";
-    let chart, candleSeries;
+const SYMBOL = "{{ asset.symbol }}";
 
-    function initChart() {
-        const container = document.getElementById('chart-container');
-        chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: 500,
-            layout: {
-                background: { color: '#1a1a2e' },
-                textColor: '#d1d4dc',
-            },
-            grid: {
-                vertLines: { color: '#2a2a3e' },
-                horzLines: { color: '#2a2a3e' },
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-                borderColor: '#2a2a3e',
-            },
-            rightPriceScale: {
-                borderColor: '#2a2a3e',
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-            },
-        });
+const DARK = {
+    bg:     '#1a1a2e',
+    text:   '#d1d4dc',
+    grid:   '#2a2a3e',
+    border: '#2a2a3e',
+};
 
-        candleSeries = chart.addCandlestickSeries({
-            upColor:     '#26a69a',
-            downColor:   '#ef5350',
-            borderVisible: false,
-            wickUpColor:   '#26a69a',
-            wickDownColor: '#ef5350',
-        });
+const BASE_OPTS = {
+    layout:          { background: { color: DARK.bg }, textColor: DARK.text },
+    grid:            { vertLines: { color: DARK.grid }, horzLines: { color: DARK.grid } },
+    rightPriceScale: { borderColor: DARK.border },
+    crosshair:       { mode: LightweightCharts.CrosshairMode.Normal },
+};
 
-        window.addEventListener('resize', () => {
-            chart.applyOptions({ width: container.clientWidth });
-        });
-    }
+// ── Main chart ──────────────────────────────────────────────────
+const mainEl = document.getElementById('chart-container');
+const mainChart = LightweightCharts.createChart(mainEl, {
+    ...BASE_OPTS,
+    width:     mainEl.clientWidth,
+    height:    400,
+    timeScale: { timeVisible: true, secondsVisible: false, borderColor: DARK.border },
+});
 
-    async function loadBars(timeframe) {
-        document.getElementById('chart-status').textContent = 'Loading…';
+const candleSeries = mainChart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350',
+    borderVisible: false,
+    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+});
 
-        const resp = await fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`);
-        const bars = await resp.json();
+const SO = { priceLineVisible: false, lastValueVisible: false };
 
-        if (!Array.isArray(bars) || bars.length === 0) {
-            candleSeries.setData([]);
-            document.getElementById('chart-status').textContent = 'No data available for this timeframe yet.';
-            document.getElementById('price-tbody').innerHTML =
-                '<tr><td colspan="6" style="text-align:center; color:#999;">No data</td></tr>';
-            return;
-        }
+const ema9Series  = mainChart.addLineSeries({ ...SO, color: '#ff9800', lineWidth: 1 });
+const ema20Series = mainChart.addLineSeries({ ...SO, color: '#2196f3', lineWidth: 1 });
+const ema50Series = mainChart.addLineSeries({ ...SO, color: '#9c27b0', lineWidth: 1 });
 
-        candleSeries.setData(bars.map(b => ({
-            time: b.time,
-            open: b.open,
-            high: b.high,
-            low: b.low,
-            close: b.close,
-        })));
+const DASHED = LightweightCharts.LineStyle.Dashed;
+const bbUpperSeries = mainChart.addLineSeries({ ...SO, color: 'rgba(230,184,0,0.7)', lineWidth: 1, lineStyle: DASHED });
+const bbMidSeries   = mainChart.addLineSeries({ ...SO, color: 'rgba(230,184,0,0.35)', lineWidth: 1, lineStyle: DASHED });
+const bbLowerSeries = mainChart.addLineSeries({ ...SO, color: 'rgba(230,184,0,0.7)', lineWidth: 1, lineStyle: DASHED });
 
-        chart.timeScale().fitContent();
-
-        const last = bars[bars.length - 1];
-        document.getElementById('chart-status').textContent =
-            `${bars.length} bars  ·  last close ${last.close.toFixed(2)}  ·  updated ${new Date().toLocaleTimeString()}`;
-
-        const tbody = document.getElementById('price-tbody');
-        tbody.innerHTML = '';
-        [...bars].reverse().slice(0, 50).forEach(b => {
-            const d = new Date(b.time * 1000);
-            const label = d.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
-            tbody.insertAdjacentHTML('beforeend', `<tr>
-                <td>${label}</td>
-                <td>${b.open.toFixed(2)}</td>
-                <td>${b.high.toFixed(2)}</td>
-                <td>${b.low.toFixed(2)}</td>
-                <td>${b.close.toFixed(2)}</td>
-                <td>${b.volume.toLocaleString()}</td>
-            </tr>`);
-        });
-    }
-
-    document.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            loadBars(this.dataset.tf);
-        });
+// ── Sub-chart factory ────────────────────────────────────────────
+function mkSubChart(elId, height) {
+    const el = document.getElementById(elId);
+    return LightweightCharts.createChart(el, {
+        ...BASE_OPTS,
+        width:        el.clientWidth,
+        height,
+        timeScale:    { visible: false },
+        handleScale:  false,
+        handleScroll: false,
     });
+}
 
-    initChart();
-    loadBars('1min');
+const rsiChart   = mkSubChart('rsi-pane',   100);
+const macdChart  = mkSubChart('macd-pane',  120);
+const stochChart = mkSubChart('stoch-pane', 100);
+const adxChart   = mkSubChart('adx-pane',   100);
+
+// RSI series
+const rsiSeries = rsiChart.addLineSeries({ ...SO, color: '#e91e63', lineWidth: 1, lastValueVisible: true });
+rsiSeries.createPriceLine({ price: 70, color: '#555', lineWidth: 1, lineStyle: DASHED, axisLabelVisible: false });
+rsiSeries.createPriceLine({ price: 30, color: '#555', lineWidth: 1, lineStyle: DASHED, axisLabelVisible: false });
+
+// MACD series
+const macdLineSeries   = macdChart.addLineSeries({ ...SO, color: '#2196f3', lineWidth: 1 });
+const macdSignalSeries = macdChart.addLineSeries({ ...SO, color: '#ff9800', lineWidth: 1 });
+const macdHistSeries   = macdChart.addHistogramSeries({ ...SO });
+
+// Stochastic series
+const stochKSeries = stochChart.addLineSeries({ ...SO, color: '#4caf50', lineWidth: 1 });
+const stochDSeries = stochChart.addLineSeries({ ...SO, color: '#ff5722', lineWidth: 1 });
+stochKSeries.createPriceLine({ price: 80, color: '#555', lineWidth: 1, lineStyle: DASHED, axisLabelVisible: false });
+stochKSeries.createPriceLine({ price: 20, color: '#555', lineWidth: 1, lineStyle: DASHED, axisLabelVisible: false });
+
+// ADX series
+const adxSeries    = adxChart.addLineSeries({ ...SO, color: '#ffffff', lineWidth: 1 });
+const adxPosSeries = adxChart.addLineSeries({ ...SO, color: '#4caf50', lineWidth: 1 });
+const adxNegSeries = adxChart.addLineSeries({ ...SO, color: '#f44336', lineWidth: 1 });
+adxSeries.createPriceLine({ price: 25, color: '#555', lineWidth: 1, lineStyle: DASHED, axisLabelVisible: false });
+
+// ── Time sync ────────────────────────────────────────────────────
+const allCharts = [mainChart, rsiChart, macdChart, stochChart, adxChart];
+let syncing = false;
+allCharts.forEach(src => {
+    src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (syncing || !range) return;
+        syncing = true;
+        allCharts.forEach(c => { if (c !== src) c.timeScale().setVisibleLogicalRange(range); });
+        syncing = false;
+    });
+});
+
+// ── Resize ───────────────────────────────────────────────────────
+const paneIds = ['chart-container', 'rsi-pane', 'macd-pane', 'stoch-pane', 'adx-pane'];
+window.addEventListener('resize', () => {
+    allCharts.forEach((c, i) => {
+        const el = document.getElementById(paneIds[i]);
+        if (el) c.applyOptions({ width: el.clientWidth });
+    });
+});
+
+// ── Indicator toggles ─────────────────────────────────────────────
+const visState = { emas: true, bbands: true, rsi: true, macd: true, stoch: true, adx: true };
+
+document.querySelectorAll('.ind-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+        const ind = this.dataset.ind;
+        visState[ind] = !visState[ind];
+        const v = visState[ind];
+        this.style.opacity = v ? '1' : '0.35';
+        switch (ind) {
+            case 'emas':
+                [ema9Series, ema20Series, ema50Series].forEach(s => s.applyOptions({ visible: v }));
+                break;
+            case 'bbands':
+                [bbUpperSeries, bbMidSeries, bbLowerSeries].forEach(s => s.applyOptions({ visible: v }));
+                break;
+            case 'rsi':
+                document.getElementById('rsi-pane').style.display = v ? '' : 'none';
+                break;
+            case 'macd':
+                document.getElementById('macd-pane').style.display = v ? '' : 'none';
+                break;
+            case 'stoch':
+                document.getElementById('stoch-pane').style.display = v ? '' : 'none';
+                break;
+            case 'adx':
+                document.getElementById('adx-pane').style.display = v ? '' : 'none';
+                break;
+        }
+    });
+});
+
+// ── Load data ────────────────────────────────────────────────────
+const allSeries = [
+    candleSeries, ema9Series, ema20Series, ema50Series,
+    bbUpperSeries, bbMidSeries, bbLowerSeries,
+    rsiSeries, macdLineSeries, macdSignalSeries, macdHistSeries,
+    stochKSeries, stochDSeries, adxSeries, adxPosSeries, adxNegSeries,
+];
+
+async function loadBars(timeframe) {
+    document.getElementById('chart-status').textContent = 'Loading…';
+
+    const [barsResp, indResp] = await Promise.all([
+        fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
+        fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}`),
+    ]);
+    const bars = await barsResp.json();
+    const ind  = await indResp.json();
+
+    if (!Array.isArray(bars) || bars.length === 0) {
+        allSeries.forEach(s => s.setData([]));
+        document.getElementById('chart-status').textContent = 'No data for this timeframe.';
+        document.getElementById('price-tbody').innerHTML =
+            '<tr><td colspan="6" style="text-align:center;color:#999;">No data</td></tr>';
+        return;
+    }
+
+    // Set all series data before fitting (so sync works correctly)
+    candleSeries.setData(bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close })));
+
+    ema9Series.setData(ind.ema9        || []);
+    ema20Series.setData(ind.ema20      || []);
+    ema50Series.setData(ind.ema50      || []);
+    bbUpperSeries.setData(ind.bb_upper  || []);
+    bbMidSeries.setData(ind.bb_middle   || []);
+    bbLowerSeries.setData(ind.bb_lower  || []);
+
+    rsiSeries.setData(ind.rsi              || []);
+    macdLineSeries.setData(ind.macd        || []);
+    macdSignalSeries.setData(ind.macd_signal || []);
+    macdHistSeries.setData(ind.macd_hist   || []);
+    stochKSeries.setData(ind.stoch_k       || []);
+    stochDSeries.setData(ind.stoch_d       || []);
+    adxSeries.setData(ind.adx              || []);
+    adxPosSeries.setData(ind.adx_pos       || []);
+    adxNegSeries.setData(ind.adx_neg       || []);
+
+    // fitContent on main chart triggers sync to all sub-charts
+    mainChart.timeScale().fitContent();
+
+    const last = bars[bars.length - 1];
+    document.getElementById('chart-status').textContent =
+        `${bars.length} bars · last close ${last.close.toFixed(2)} · ${new Date().toLocaleTimeString()}`;
+
+    const tbody = document.getElementById('price-tbody');
+    tbody.innerHTML = '';
+    [...bars].reverse().slice(0, 50).forEach(b => {
+        const label = new Date(b.time * 1000).toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
+        tbody.insertAdjacentHTML('beforeend', `<tr>
+            <td>${label}</td>
+            <td>${b.open.toFixed(2)}</td>
+            <td>${b.high.toFixed(2)}</td>
+            <td>${b.low.toFixed(2)}</td>
+            <td>${b.close.toFixed(2)}</td>
+            <td>${b.volume.toLocaleString()}</td>
+        </tr>`);
+    });
+}
+
+// ── Timeframe buttons ─────────────────────────────────────────────
+document.querySelectorAll('.tf-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+        document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        loadBars(this.dataset.tf);
+    });
+});
+
+loadBars('1min');
 </script>
 {% endblock %}

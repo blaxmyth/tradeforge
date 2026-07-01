@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Request, Depends, Form, Body
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from datetime import date
@@ -7,8 +8,9 @@ from config import *
 from db.models import *
 from db.database import *
 from sqlalchemy.future import select
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from web.auth.auth import *
+from strats.opening_range_strategy import backtest, sweep, DEFAULT_CONFIG
 
 templates = Jinja2Templates(directory="/app/web/templates")
 router = APIRouter(
@@ -80,40 +82,72 @@ async def delete_strategy(
 
 @router.get("/strategy/{strategy_id}")
 async def strategy_detail(
-    request: Request, 
-    strategy_id: int, # Use type hint for clarity
+    request: Request,
+    strategy_id: int,
     db: AsyncSession = Depends(get_db),
-    context: dict = Depends(get_authenticated_template_context) # Use the context dependency for user/auth details
+    context: dict = Depends(get_authenticated_template_context),
 ):
-    
-    # 1. Fetch the Strategy object by ID
-    # This replaces the psycopg2 fetchone() for the strategy
-    strategy_query = select(Strategy).where(Strategy.id == strategy_id)
-    strategy = await db.scalar(strategy_query)
+    strategy = await db.scalar(select(Strategy).where(Strategy.id == strategy_id))
 
-    if not strategy:
-        # Handle case where strategy is not found (e.g., raise HTTP 404)
-        pass 
-    
-    assets_query = (
+    assets = (await db.scalars(
         select(Asset)
         .join(AssetStrategy, AssetStrategy.asset_id == Asset.id)
         .where(AssetStrategy.strategy_id == strategy_id)
-    )
-    
-    # Execute the query and get all the Asset objects
-    assets_result = await db.scalars(assets_query)
-    assets = assets_result.all()
-    
+        .order_by(Asset.symbol)
+    )).all()
+
+    global_config = {**DEFAULT_CONFIG, **(strategy.config or {})}
+
     return templates.TemplateResponse(
-        "strategy_detail.html", 
+        "strategy_detail.html",
         {
-            "request": request, 
-            "assets": assets, 
-            "strategy": strategy,
-            **context
-        }
+            "request":       request,
+            "strategy":      strategy,
+            "assets":        [{"id": a.id, "symbol": a.symbol, "name": a.name} for a in assets],
+            "global_config": global_config,
+            **context,
+        },
     )
+
+
+@router.post("/api/strategy/{strategy_id}/config")
+async def save_strategy_config(
+    strategy_id: int,
+    config: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the global strategy config — applies to all assets linked to this strategy."""
+    await db.execute(
+        update(Strategy).where(Strategy.id == strategy_id).values(config=config)
+    )
+    await db.commit()
+    return JSONResponse(content={"ok": True})
+
+
+@router.post("/api/asset/{symbol}/backtest")
+async def run_backtest(symbol: str, body: dict = Body(...)):
+    """
+    Run the opening range backtest for one symbol.
+    Body: {config (optional), days (optional)}
+    Returns combined + per-direction metrics and trade log.
+    """
+    config = body.get("config")
+    days   = int(body.get("days", 60))
+    result = await run_in_threadpool(backtest, symbol, config, days)
+    return JSONResponse(content=result)
+
+
+@router.post("/api/asset/{symbol}/sweep")
+async def run_sweep(symbol: str, body: dict = Body(...)):
+    """
+    Grid-search over OR end × buffer % × min range % (48 combos).
+    Body: {base_config (optional), days (optional)}
+    Returns list sorted by profit_factor desc.
+    """
+    base_config = body.get("base_config")
+    days        = int(body.get("days", 60))
+    results = await run_in_threadpool(sweep, symbol, base_config, days)
+    return JSONResponse(content=results)
 
 
 @router.get("/strategies")

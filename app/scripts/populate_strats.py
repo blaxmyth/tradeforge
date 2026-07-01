@@ -14,7 +14,7 @@ async def populate_strats(db: AsyncSession):
     for row in result:
         existing_strats.append(row[0])
 
-    strategies = ['opening_range_breakout', 'opening_range_breakdown']
+    strategies = ['opening_range']
 
     for strategy in strategies:
         if strategy in existing_strats:
