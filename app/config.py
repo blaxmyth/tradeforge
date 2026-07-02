@@ -1,7 +1,7 @@
 import os
 import redis.asyncio as redis
 
-POLYGON_URL = os.getenv("POLYGON_URL", "https://api.polygon.io/v3/")
+POLYGON_URL = os.getenv("POLYGON_URL")
 POLYGON_KEY = os.getenv("POLYGON_KEY")
 
 ALPACA_URL = os.getenv("ALPACA_URL")
@@ -10,16 +10,16 @@ ALPACA_SECRET = os.getenv("ALPACA_SECRET")
 
 ALPACA_BROKER_KEY = os.getenv("ALPACA_BROKER_KEY")
 ALPACA_BROKER_SECRET = os.getenv("ALPACA_BROKER_SECRET")
-ALPACA_BROKER_URL = os.getenv("ALPACA_BROKER_URL", "https://broker-api.sandbox.alpaca.markets")
+ALPACA_BROKER_URL = os.getenv("ALPACA_BROKER_URL")
 
-TRADIER_URL = os.getenv("TRADIER_URL", "https://api.tradier.com/v1/")
-TRADIER_SANDBOX_URL = os.getenv("TRADIER_SANDBOX_URL", "https://sandbox.tradier.com/v1/")
+TRADIER_URL = os.getenv("TRADIER_URL")
+TRADIER_SANDBOX_URL = os.getenv("TRADIER_SANDBOX_UR")
 TRADIER_SANDBOX_KEY = os.getenv("TRADIER_SANDBOX_KEY")
 
-DB_HOST = os.getenv("DB_HOST", "timescale-db")
-DB_USER = os.getenv("DB_USER", "timescale")
-DB_PASS = os.getenv("DB_PASS", "timescale")
-DB_NAME = os.getenv("DB_NAME", "tradeforge")
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_NAME = os.getenv("DB_NAME")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
