@@ -86,14 +86,16 @@ async def login_for_access_token(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
-    response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True)
+    response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True,
+                        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/api/refresh")
 async def refresh_token(response: Response, current_user: User = Depends(get_current_user_from_token)):
     """Slide the session window — called by the client every 20 minutes."""
     token = create_access_token(data={"sub": current_user.email})
-    response.set_cookie(key="access_token", value=f"Bearer {token}", httponly=True)
+    response.set_cookie(key="access_token", value=f"Bearer {token}", httponly=True,
+                        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     return {"ok": True}
 
 # Protected route that requires authentication

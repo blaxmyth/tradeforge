@@ -26,7 +26,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours — covers a full trading day
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
