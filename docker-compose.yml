@@ -106,7 +106,7 @@ services:
   celery-worker:
     build: ./app
     container_name: celery-worker
-    command: celery -A tasks.tasks.celery worker --loglevel=info -B
+    command: celery -A tasks.tasks.celery worker --loglevel=info -B -c 1
     env_file: .env
     depends_on:
       - redis

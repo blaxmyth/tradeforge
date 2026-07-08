@@ -351,8 +351,11 @@ def opening_range_strategy() -> None:
 
     for symbol in symbols:
         signal_key = f"ors:{STRATEGY_NAME}:{symbol}:{today}"
-        if _redis.get(signal_key):
-            continue
+        try:
+            if _redis.get(signal_key):
+                continue
+        except Exception:
+            pass  # Redis unavailable — fall through to DB check below
 
         if cfg["timeframe"] not in _LIVE_BUCKET:
             continue
@@ -402,6 +405,33 @@ def opening_range_strategy() -> None:
             f"Config     : OR {cfg['or_start']}–{cfg['or_end']} | "
             f"buffer {cfg['buffer_pct']}% | tf {cfg['timeframe']}"
         )
+        ttl = int(
+            (datetime.combine(today + timedelta(days=1), time(0, 0)) - datetime.now())
+            .total_seconds()
+        )
+
+        # Atomically claim the signal slot — SET NX wins the race across workers.
+        # If Redis is down, fall back to a DB uniqueness check.
+        redis_claimed = False
+        try:
+            redis_claimed = _redis.set(signal_key, "fired", ex=max(ttl, 3600), nx=True)
+        except Exception:
+            pass
+
+        if not redis_claimed:
+            # Redis said key already exists (or was unreachable) — check DB as fallback
+            with SyncSessionLocal() as session:
+                already = session.execute(
+                    select(SignalLog.id)
+                    .where(
+                        SignalLog.strategy_name == STRATEGY_NAME,
+                        SignalLog.symbol        == symbol,
+                        SignalLog.fired_at      >= datetime.combine(today, time(0, 0)),
+                    )
+                ).scalar_one_or_none()
+            if already:
+                continue
+
         print(f"[ORS] SIGNAL — {message}")
         _send_notification(message)
 
@@ -418,9 +448,3 @@ def opening_range_strategy() -> None:
                 config_snapshot = cfg,
             ))
             session.commit()
-
-        ttl = int(
-            (datetime.combine(today + timedelta(days=1), time(0, 0)) - datetime.now())
-            .total_seconds()
-        )
-        _redis.setex(signal_key, max(ttl, 3600), "fired")
