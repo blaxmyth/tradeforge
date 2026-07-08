@@ -132,7 +132,7 @@ async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: A
 
 
 @router.get("/api/asset/{symbol}/indicators")
-async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "9,20,50", db: AsyncSession = Depends(get_db)):
+async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "200", db: AsyncSession = Depends(get_db)):
     if timeframe not in _TIMEFRAME_TABLE:
         return JSONResponse(status_code=400, content={"error": "invalid timeframe"})
 

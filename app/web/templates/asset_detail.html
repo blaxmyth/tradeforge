@@ -54,10 +54,10 @@
          font-family:monospace;pointer-events:none;background:rgba(26,26,46,0.75);
          padding:4px 10px;border-radius:4px;line-height:1.8;"></div>
 </div>
-<div id="rsi-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">RSI(14)</span></div>
-<div id="macd-pane"  class="ind-pane" style="width:100%;height:120px;overflow:hidden;position:relative;"><span class="pane-label">MACD(12,26,9)</span></div>
-<div id="stoch-pane" class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">Stoch(14,3,3)</span></div>
-<div id="adx-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">ADX(14)</span></div>
+<div id="rsi-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">RSI(14) <span id="rsi-val" style="color:#d1d4dc;font-family:monospace;"></span></span></div>
+<div id="macd-pane"  class="ind-pane" style="width:100%;height:120px;overflow:hidden;position:relative;"><span class="pane-label">MACD(12,26,9) <span id="macd-val" style="color:#d1d4dc;font-family:monospace;"></span></span></div>
+<div id="stoch-pane" class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">Stoch(14,3,3) <span id="stoch-val" style="color:#d1d4dc;font-family:monospace;"></span></span></div>
+<div id="adx-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">ADX(14) <span id="adx-val" style="color:#d1d4dc;font-family:monospace;"></span></span></div>
 <div id="chart-status" style="color:#999;font-size:12px;margin:6px 0 20px;"></div>
 
 <!-- <table class="ui striped compact table">
@@ -164,8 +164,8 @@ function removeEma(period) {
 }
 
 // seed default EMAs
-[9, 20, 50].forEach(p => {
-    emaSeries[p] = mainChart.addLineSeries({ ...SO, color: EMA_COLORS[[9,20,50].indexOf(p)], lineWidth: 1 });
+[200].forEach(p => {
+    emaSeries[p] = mainChart.addLineSeries({ ...SO, color: EMA_COLORS[[200].indexOf(p)], lineWidth: 1 });
 });
 renderEmaChips();
 
@@ -271,6 +271,18 @@ document.querySelectorAll('.ind-btn').forEach(btn => {
     });
 });
 
+// ── Indicator data indexed by time for crosshair lookup ──────────
+let indByTime = {};
+
+function indexInd(ind) {
+    const out = {};
+    ['rsi','macd','macd_signal','macd_hist','stoch_k','stoch_d','adx','adx_pos','adx_neg'].forEach(k => {
+        out[k] = {};
+        if (ind[k]) ind[k].forEach(p => { out[k][p.time] = p.value; });
+    });
+    return out;
+}
+
 // ── Load data ────────────────────────────────────────────────────
 const allSeries = [
     candleSeries, volumeSeries,
@@ -293,15 +305,35 @@ function setLegend(bar, vol) {
         `<span style="color:#888;">V</span> <span style="color:#d1d4dc">${volStr}</span>`;
 }
 
+function fmt(v, decimals) { return v != null ? v.toFixed(decimals) : null; }
+
+function setPaneLegends(t) {
+    const r  = indByTime;
+
+    const rsi = fmt(r.rsi?.[t], 1);
+    document.getElementById('rsi-val').textContent = rsi ?? '';
+
+    const mv = fmt(r.macd?.[t], 3), sv = fmt(r.macd_signal?.[t], 3), hv = fmt(r.macd_hist?.[t], 3);
+    document.getElementById('macd-val').textContent =
+        [mv && `M ${mv}`, sv && `S ${sv}`, hv && `H ${hv}`].filter(Boolean).join('  ');
+
+    const kv = fmt(r.stoch_k?.[t], 1), dv = fmt(r.stoch_d?.[t], 1);
+    document.getElementById('stoch-val').textContent =
+        [kv && `%K ${kv}`, dv && `%D ${dv}`].filter(Boolean).join('  ');
+
+    const av = fmt(r.adx?.[t], 1), pv = fmt(r.adx_pos?.[t], 1), nv = fmt(r.adx_neg?.[t], 1);
+    document.getElementById('adx-val').textContent =
+        [av && `ADX ${av}`, pv && `+DI ${pv}`, nv && `-DI ${nv}`].filter(Boolean).join('  ');
+}
+
 mainChart.subscribeCrosshairMove(param => {
     if (!param.time || !param.seriesData.has(candleSeries)) {
-        // crosshair left the chart — restore last bar
-        const last = candleSeries.data ? candleSeries.data().at(-1) : null;
         return;
     }
     const bar = param.seriesData.get(candleSeries);
     const vol = param.seriesData.get(volumeSeries);
     setLegend(bar, vol ? vol.value : null);
+    setPaneLegends(param.time);
 });
 
 let currentTf = '1min';
@@ -311,7 +343,7 @@ async function loadBars(timeframe, preserveRange = false) {
 
     const savedRange = preserveRange ? mainChart.timeScale().getVisibleLogicalRange() : null;
 
-    const emaPeriods = Object.keys(emaSeries).join(',') || '9,20,50';
+    const emaPeriods = Object.keys(emaSeries).join(',') || '200';
     const [barsResp, indResp] = await Promise.all([
         fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
         fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}&ema=${emaPeriods}`),
@@ -356,6 +388,8 @@ async function loadBars(timeframe, preserveRange = false) {
     adxSeries.setData(ind.adx              || []);
     adxPosSeries.setData(ind.adx_pos       || []);
     adxNegSeries.setData(ind.adx_neg       || []);
+
+    indByTime = indexInd(ind);
 
     if (savedRange) {
         mainChart.timeScale().setVisibleLogicalRange(savedRange);
