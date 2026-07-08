@@ -130,21 +130,21 @@ services:
   #   networks:
   #     - tradeforge_net
 
-  # portainer:
-  #   container_name: portainer
-  #   image: portainer/portainer-ce:lts
-  #   restart: always
-  #   ports:
-  #     - 8000:8000
-  #     - 9000:9000
-  #     - 9443:9443
-  #   networks:
-  #     - tradeforge_net
-  #   depends_on:
-  #     - fastapi-web
-  #   volumes:
-  #     - portainer_data:/data
-  #     - /var/run/docker.sock:/var/run/docker.sock
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:lts
+    restart: always
+    ports:
+      - 8000:8000
+      - 9000:9000
+      - 9443:9443
+    networks:
+      - tradeforge_net
+    depends_on:
+      - fastapi-web
+    volumes:
+      - portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # prometheus:
   #   container_name: prometheus
