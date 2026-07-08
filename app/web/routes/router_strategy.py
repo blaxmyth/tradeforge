@@ -20,79 +20,56 @@ router = APIRouter(
 
 @router.post("/apply_strategy")
 async def apply_strategy(
-    strategy_id: int = Form(...), 
+    strategy_id: int = Form(...),
     asset_id: int = Form(...),
     db: AsyncSession = Depends(get_db)
 ):
+    strategy_name = await db.scalar(select(Strategy.name).where(Strategy.id == strategy_id))
     try:
-        # 1. Create a new AssetStrategy object (the join table entry)
-        new_link = AssetStrategy(
-            asset_id=asset_id, 
-            strategy_id=strategy_id
-        )
-
-        # 2. Add the new object to the session and commit
-        db.add(new_link)
-        await db.commit() # This executes the INSERT operation
-
-        # 3. Redirect to the strategy detail page to show the added asset
-        return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=status.HTTP_303_SEE_OTHER)
-        
+        db.add(AssetStrategy(asset_id=asset_id, strategy_id=strategy_id))
+        await db.commit()
+        return RedirectResponse(url=f"/strategy/{strategy_name}", status_code=status.HTTP_303_SEE_OTHER)
     except IntegrityError:
-        # Catch potential database errors (e.g., asset already linked, or non-existent FK)
         await db.rollback()
-        # Log the error, and redirect back with a possible error message (e.g., via session)
-        print(f"Error: Asset {asset_id} is already linked to strategy {strategy_id} or foreign key constraint failed.")
-        return RedirectResponse(url=f"/strategy/{strategy_id}?error=link_failed", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/strategy/{strategy_name}?error=link_failed", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        # General error handling (e.g., session expired, database unavailable)
         print(f"An unexpected error occurred: {e}")
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-   
+
 
 @router.post("/delete_strategy")
 async def delete_strategy(
-    strategy_id: int = Form(...), 
+    strategy_id: int = Form(...),
     asset_id: int = Form(...),
     db: AsyncSession = Depends(get_db)
 ):
+    strategy_name = await db.scalar(select(Strategy.name).where(Strategy.id == strategy_id))
     try:
-        # 1. Construct the delete query to remove the link in the AssetStrategy table
-        # We target the specific combination of asset_id and strategy_id
-        query = delete(AssetStrategy).where(
-            AssetStrategy.asset_id == asset_id, 
+        await db.execute(delete(AssetStrategy).where(
+            AssetStrategy.asset_id == asset_id,
             AssetStrategy.strategy_id == strategy_id
-        )
-
-        # 2. Execute the query
-        await db.execute(query)
-
-        # 3. Commit the change
-        await db.commit() 
-
-        # 4. Redirect to the strategy detail page to show the updated list
-        return RedirectResponse(url=f"/strategy/{strategy_id}", status_code=status.HTTP_303_SEE_OTHER)
-        
+        ))
+        await db.commit()
+        return RedirectResponse(url=f"/strategy/{strategy_name}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        # Handle general errors (e.g., database connection issues)
         await db.rollback()
         print(f"An unexpected error occurred during deletion: {e}")
-        # Redirect back to the strategy page with an error status
-        return RedirectResponse(url=f"/strategy/{strategy_id}?error=delete_failed", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/strategy/{strategy_name}?error=delete_failed", status_code=status.HTTP_303_SEE_OTHER)
 
-@router.get("/strategy/{strategy_id}")
+
+@router.get("/strategy/{strategy_name}")
 async def strategy_detail(
     request: Request,
-    strategy_id: int,
+    strategy_name: str,
     db: AsyncSession = Depends(get_db),
     context: dict = Depends(get_authenticated_template_context),
 ):
-    strategy = await db.scalar(select(Strategy).where(Strategy.id == strategy_id))
+    strategy = await db.scalar(select(Strategy).where(Strategy.name == strategy_name))
 
     assets = (await db.scalars(
         select(Asset)
         .join(AssetStrategy, AssetStrategy.asset_id == Asset.id)
-        .where(AssetStrategy.strategy_id == strategy_id)
+        .where(AssetStrategy.strategy_id == strategy.id)
         .order_by(Asset.symbol)
     )).all()
 

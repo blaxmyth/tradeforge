@@ -84,7 +84,7 @@
             {% for s in strategies %}
             <div class="item" style="padding:10px 0;">
                 <div class="content">
-                    <a class="header" href="/strategy/{{ s.id }}" style="font-size:14px;">{{ s.name }}</a>
+                    <a class="header" href="/strategy/{{ s.name }}" style="font-size:14px;">{{ s.name }}</a>
                     <div class="description" style="margin-top:4px; color:#888; font-size:12px;">
                         {{ s.asset_count }} asset{{ 's' if s.asset_count != 1 }}
                         {% if s.config %}
