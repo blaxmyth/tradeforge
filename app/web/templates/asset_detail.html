@@ -34,6 +34,7 @@
         <button class="ui button tf-btn" data-tf="1day">1 Day</button>
     </div>
     <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">
+        <button class="ind-btn" data-ind="volume" style="background:#455a64;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Vol</button>
         <button class="ind-btn" data-ind="emas"   style="background:#ff9800;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">EMA</button>
         <button class="ind-btn" data-ind="bbands" style="background:#e6b800;color:#000;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">BB</button>
         <button class="ind-btn" data-ind="rsi"    style="background:#e91e63;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">RSI</button>
@@ -235,7 +236,7 @@ window.addEventListener('resize', () => {
 });
 
 // ── Indicator toggles ─────────────────────────────────────────────
-const visState = { emas: true, bbands: true, rsi: true, macd: true, stoch: true, adx: true };
+const visState = { volume: true, emas: true, bbands: true, rsi: true, macd: true, stoch: true, adx: true };
 
 document.querySelectorAll('.ind-btn').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -244,6 +245,9 @@ document.querySelectorAll('.ind-btn').forEach(btn => {
         const v = visState[ind];
         this.style.opacity = v ? '1' : '0.35';
         switch (ind) {
+            case 'volume':
+                volumeSeries.applyOptions({ visible: v });
+                break;
             case 'emas':
                 emasVisible = v;
                 Object.values(emaSeries).forEach(s => s.applyOptions({ visible: v }));
