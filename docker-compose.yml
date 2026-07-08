@@ -134,6 +134,7 @@ services:
     container_name: portainer
     image: portainer/portainer-ce:lts
     restart: always
+    command: --base-url /portainer
     ports:
       - 8000:8000
       - 9000:9000
