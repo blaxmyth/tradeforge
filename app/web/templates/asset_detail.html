@@ -55,7 +55,7 @@
 <div id="adx-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">ADX(14)</span></div>
 <div id="chart-status" style="color:#999;font-size:12px;margin:6px 0 20px;"></div>
 
-<table class="ui striped compact table">
+<!-- <table class="ui striped compact table">
     <thead>
         <tr>
             <th>Time (ET)</th>
@@ -69,7 +69,7 @@
     <tbody id="price-tbody">
         <tr><td colspan="6" style="text-align:center; color:#999;">Loading…</td></tr>
     </tbody>
-</table>
+</table> -->
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
@@ -279,8 +279,8 @@ async function loadBars(timeframe, preserveRange = false) {
         allSeries.forEach(s => s.setData([]));
         Object.values(emaSeries).forEach(s => s.setData([]));
         document.getElementById('chart-status').textContent = 'No data for this timeframe.';
-        document.getElementById('price-tbody').innerHTML =
-            '<tr><td colspan="6" style="text-align:center;color:#999;">No data</td></tr>';
+        // document.getElementById('price-tbody').innerHTML =
+        //     '<tr><td colspan="6" style="text-align:center;color:#999;">No data</td></tr>';
         return;
     }
 
@@ -314,19 +314,19 @@ async function loadBars(timeframe, preserveRange = false) {
     document.getElementById('chart-status').textContent =
         `${bars.length} bars · last close ${last.close.toFixed(2)} · ${new Date().toLocaleTimeString()}`;
 
-    const tbody = document.getElementById('price-tbody');
-    tbody.innerHTML = '';
-    [...bars].reverse().slice(0, 50).forEach(b => {
-        const label = new Date(b.time * 1000).toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
-        tbody.insertAdjacentHTML('beforeend', `<tr>
-            <td>${label}</td>
-            <td>${b.open.toFixed(2)}</td>
-            <td>${b.high.toFixed(2)}</td>
-            <td>${b.low.toFixed(2)}</td>
-            <td>${b.close.toFixed(2)}</td>
-            <td>${b.volume.toLocaleString()}</td>
-        </tr>`);
-    });
+    // const tbody = document.getElementById('price-tbody');
+    // tbody.innerHTML = '';
+    // [...bars].reverse().slice(0, 50).forEach(b => {
+    //     const label = new Date(b.time * 1000).toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
+    //     tbody.insertAdjacentHTML('beforeend', `<tr>
+    //         <td>${label}</td>
+    //         <td>${b.open.toFixed(2)}</td>
+    //         <td>${b.high.toFixed(2)}</td>
+    //         <td>${b.low.toFixed(2)}</td>
+    //         <td>${b.close.toFixed(2)}</td>
+    //         <td>${b.volume.toLocaleString()}</td>
+    //     </tr>`);
+    // });
 }
 
 // ── EMA add button ────────────────────────────────────────────────

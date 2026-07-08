@@ -31,7 +31,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
     if await form.is_valid():
         try:
             form.__dict__.update(msg="Login Successful :)")
-            response = RedirectResponse(url="/assets", status_code=status.HTTP_302_FOUND)
+            response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
             await login_for_access_token(response=response, form_data=form, db=db)
             return response
         except HTTPException:
