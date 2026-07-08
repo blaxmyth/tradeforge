@@ -44,6 +44,15 @@ TIMEFRAME_TABLE: dict[str, tuple[str, str]] = {
     "1hr":   ("asset_price_1hr",   "bucket"),
 }
 
+# Bucket sizes for on-the-fly aggregation in the live runner —
+# avoids continuous aggregate refresh lag on non-1min timeframes
+_LIVE_BUCKET: dict[str, str] = {
+    "1min":  "1 minute",
+    "5min":  "5 minutes",
+    "15min": "15 minutes",
+    "1hr":   "1 hour",
+}
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "or_start":        "09:30",
     "or_end":          "09:45",
@@ -341,24 +350,39 @@ def opening_range_strategy() -> None:
         ).scalars().all()
 
     for symbol in symbols:
-        if cfg["timeframe"] not in TIMEFRAME_TABLE:
-            continue
-
         signal_key = f"ors:{STRATEGY_NAME}:{symbol}:{today}"
         if _redis.get(signal_key):
             continue
 
-        table, time_col = TIMEFRAME_TABLE[cfg["timeframe"]]
-        or_start_dt     = datetime.combine(today, _parse_time(cfg["or_start"]))
+        if cfg["timeframe"] not in _LIVE_BUCKET:
+            continue
+
+        bucket      = _LIVE_BUCKET[cfg["timeframe"]]
+        or_start_dt = datetime.combine(today, _parse_time(cfg["or_start"]))
 
         with SyncSessionLocal() as session:
+            asset_id = session.execute(
+                select(Asset.id).where(Asset.symbol == symbol)
+            ).scalar_one_or_none()
+            if not asset_id:
+                continue
+
+            # Aggregate directly from raw 1-min bars so there is no
+            # continuous aggregate refresh lag on non-1min timeframes.
             day_bars = session.execute(text(f"""
-                SELECT {time_col} AS t, open, high, low, close, volume
-                FROM {table}
-                WHERE asset_id = (SELECT id FROM asset WHERE symbol = :sym LIMIT 1)
-                  AND {time_col} >= :start
-                ORDER BY {time_col} ASC
-            """), {"sym": symbol, "start": or_start_dt}).fetchall()
+                SELECT
+                    time_bucket('{bucket}', datetime) AS t,
+                    first(open, datetime)  AS open,
+                    max(high)              AS high,
+                    min(low)               AS low,
+                    last(close, datetime)  AS close,
+                    sum(volume)            AS volume
+                FROM asset_price
+                WHERE asset_id = :aid
+                  AND datetime >= :start
+                GROUP BY 1
+                ORDER BY 1 ASC
+            """), {"aid": asset_id, "start": or_start_dt}).fetchall()
 
         trade = _simulate_day(day_bars, cfg)
         if not trade:

@@ -134,13 +134,26 @@ async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: A
 
 
 @router.get("/api/asset/{symbol}/indicators")
-async def get_indicators(symbol: str, timeframe: str = "1min", db: AsyncSession = Depends(get_db)):
+async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "9,20,50", db: AsyncSession = Depends(get_db)):
     if timeframe not in _TIMEFRAME_TABLE:
         return JSONResponse(status_code=400, content={"error": "invalid timeframe"})
 
     asset = await db.scalar(select(Asset).where(Asset.symbol == symbol))
     if not asset:
         return JSONResponse(status_code=404, content={"error": "asset not found"})
+
+    # Parse and validate requested EMA periods
+    ema_periods = []
+    for p in ema.split(","):
+        try:
+            n = int(p.strip())
+            if 2 <= n <= 500:
+                ema_periods.append(n)
+        except ValueError:
+            pass
+    if not ema_periods:
+        ema_periods = [9, 20, 50]
+    ema_periods = ema_periods[:10]  # cap at 10
 
     table, time_col = _TIMEFRAME_TABLE[timeframe]
 
@@ -164,10 +177,9 @@ async def get_indicators(symbol: str, timeframe: str = "1min", db: AsyncSession 
     high  = df["high"].astype(float)
     low   = df["low"].astype(float)
 
-    # EMAs
-    df["ema9"]  = close.ewm(span=9,  adjust=False).mean()
-    df["ema20"] = close.ewm(span=20, adjust=False).mean()
-    df["ema50"] = close.ewm(span=50, adjust=False).mean()
+    # EMAs — compute only the requested periods
+    for period in ema_periods:
+        df[f"ema_{period}"] = close.ewm(span=period, adjust=False).mean()
 
     # Bollinger Bands (SMA ± 2σ over 20 bars)
     bb_mid        = close.rolling(20).mean()
@@ -229,10 +241,10 @@ async def get_indicators(symbol: str, timeframe: str = "1min", db: AsyncSession 
             hist.append({"time": int(ET.localize(row.t).timestamp()), "value": round(fv, 4),
                          "color": "#26a69a" if fv >= 0 else "#ef5350"})
 
+    ema_out = {f"ema_{p}": to_series(f"ema_{p}") for p in ema_periods}
+
     return JSONResponse(content={
-        "ema9":        to_series("ema9"),
-        "ema20":       to_series("ema20"),
-        "ema50":       to_series("ema50"),
+        **ema_out,
         "bb_upper":    to_series("bb_upper"),
         "bb_middle":   to_series("bb_middle"),
         "bb_lower":    to_series("bb_lower"),

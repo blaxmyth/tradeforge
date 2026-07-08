@@ -33,13 +33,18 @@
         <button class="ui button tf-btn" data-tf="1hr">1 Hr</button>
         <button class="ui button tf-btn" data-tf="1day">1 Day</button>
     </div>
-    <div style="display:flex; gap:4px; flex-wrap:wrap;">
+    <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">
         <button class="ind-btn" data-ind="emas"   style="background:#ff9800;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">EMA</button>
         <button class="ind-btn" data-ind="bbands" style="background:#e6b800;color:#000;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">BB</button>
         <button class="ind-btn" data-ind="rsi"    style="background:#e91e63;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">RSI</button>
         <button class="ind-btn" data-ind="macd"   style="background:#2196f3;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">MACD</button>
         <button class="ind-btn" data-ind="stoch"  style="background:#4caf50;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Stoch</button>
         <button class="ind-btn" data-ind="adx"    style="background:#9c27b0;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">ADX</button>
+        <span style="color:#555;margin:0 2px;">|</span>
+        <input id="ema-input" type="number" min="2" max="500" placeholder="period"
+               style="width:64px;background:#1e222d;color:#d1d4dc;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:12px;">
+        <button id="ema-add-btn" style="background:#ff9800;color:#fff;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;">+ EMA</button>
+        <div id="ema-chips" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
     </div>
 </div>
 
@@ -101,9 +106,52 @@ const candleSeries = mainChart.addCandlestickSeries({
 
 const SO = { priceLineVisible: false, lastValueVisible: false };
 
-const ema9Series  = mainChart.addLineSeries({ ...SO, color: '#ff9800', lineWidth: 1 });
-const ema20Series = mainChart.addLineSeries({ ...SO, color: '#2196f3', lineWidth: 1 });
-const ema50Series = mainChart.addLineSeries({ ...SO, color: '#9c27b0', lineWidth: 1 });
+// ── Dynamic EMA series ────────────────────────────────────────────
+const EMA_COLORS  = ['#ff9800','#2196f3','#9c27b0','#26a69a','#ef5350','#e6b800','#00bcd4','#ff5722'];
+const emaSeries   = {};   // period (int) → LineSeries
+let   emasVisible = true;
+
+function emaColor(period) {
+    const order = Object.keys(emaSeries).map(Number).sort((a,b)=>a-b);
+    const idx   = order.indexOf(period);
+    return EMA_COLORS[idx % EMA_COLORS.length];
+}
+
+function renderEmaChips() {
+    const container = document.getElementById('ema-chips');
+    container.innerHTML = '';
+    Object.keys(emaSeries).map(Number).sort((a,b)=>a-b).forEach(period => {
+        const color = emaColor(period);
+        const chip  = document.createElement('span');
+        chip.style.cssText = `display:inline-flex;align-items:center;gap:4px;background:${color}22;
+            border:1px solid ${color};border-radius:4px;padding:2px 7px;font-size:11px;color:${color};`;
+        chip.innerHTML = `EMA${period} <span style="cursor:pointer;font-size:13px;line-height:1;" data-period="${period}">×</span>`;
+        chip.querySelector('span').addEventListener('click', () => removeEma(period));
+        container.appendChild(chip);
+    });
+}
+
+function addEma(period) {
+    if (emaSeries[period]) return;
+    const color  = EMA_COLORS[Object.keys(emaSeries).length % EMA_COLORS.length];
+    emaSeries[period] = mainChart.addLineSeries({ ...SO, color, lineWidth: 1 });
+    emaSeries[period].applyOptions({ visible: emasVisible });
+    renderEmaChips();
+    loadBars(currentTf, true);
+}
+
+function removeEma(period) {
+    if (!emaSeries[period]) return;
+    mainChart.removeSeries(emaSeries[period]);
+    delete emaSeries[period];
+    renderEmaChips();
+}
+
+// seed default EMAs
+[9, 20, 50].forEach(p => {
+    emaSeries[p] = mainChart.addLineSeries({ ...SO, color: EMA_COLORS[[9,20,50].indexOf(p)], lineWidth: 1 });
+});
+renderEmaChips();
 
 const DASHED = LightweightCharts.LineStyle.Dashed;
 const bbUpperSeries = mainChart.addLineSeries({ ...SO, color: 'rgba(230,184,0,0.7)', lineWidth: 1, lineStyle: DASHED });
@@ -182,7 +230,8 @@ document.querySelectorAll('.ind-btn').forEach(btn => {
         this.style.opacity = v ? '1' : '0.35';
         switch (ind) {
             case 'emas':
-                [ema9Series, ema20Series, ema50Series].forEach(s => s.applyOptions({ visible: v }));
+                emasVisible = v;
+                Object.values(emaSeries).forEach(s => s.applyOptions({ visible: v }));
                 break;
             case 'bbands':
                 [bbUpperSeries, bbMidSeries, bbLowerSeries].forEach(s => s.applyOptions({ visible: v }));
@@ -205,7 +254,7 @@ document.querySelectorAll('.ind-btn').forEach(btn => {
 
 // ── Load data ────────────────────────────────────────────────────
 const allSeries = [
-    candleSeries, ema9Series, ema20Series, ema50Series,
+    candleSeries,
     bbUpperSeries, bbMidSeries, bbLowerSeries,
     rsiSeries, macdLineSeries, macdSignalSeries, macdHistSeries,
     stochKSeries, stochDSeries, adxSeries, adxPosSeries, adxNegSeries,
@@ -218,15 +267,17 @@ async function loadBars(timeframe, preserveRange = false) {
 
     const savedRange = preserveRange ? mainChart.timeScale().getVisibleLogicalRange() : null;
 
+    const emaPeriods = Object.keys(emaSeries).join(',') || '9,20,50';
     const [barsResp, indResp] = await Promise.all([
         fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
-        fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}`),
+        fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}&ema=${emaPeriods}`),
     ]);
     const bars = await barsResp.json();
     const ind  = await indResp.json();
 
     if (!Array.isArray(bars) || bars.length === 0) {
         allSeries.forEach(s => s.setData([]));
+        Object.values(emaSeries).forEach(s => s.setData([]));
         document.getElementById('chart-status').textContent = 'No data for this timeframe.';
         document.getElementById('price-tbody').innerHTML =
             '<tr><td colspan="6" style="text-align:center;color:#999;">No data</td></tr>';
@@ -235,9 +286,10 @@ async function loadBars(timeframe, preserveRange = false) {
 
     candleSeries.setData(bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close })));
 
-    ema9Series.setData(ind.ema9          || []);
-    ema20Series.setData(ind.ema20        || []);
-    ema50Series.setData(ind.ema50        || []);
+    Object.keys(emaSeries).map(Number).forEach(period => {
+        emaSeries[period].setData(ind[`ema_${period}`] || []);
+    });
+
     bbUpperSeries.setData(ind.bb_upper   || []);
     bbMidSeries.setData(ind.bb_middle    || []);
     bbLowerSeries.setData(ind.bb_lower   || []);
@@ -276,6 +328,18 @@ async function loadBars(timeframe, preserveRange = false) {
         </tr>`);
     });
 }
+
+// ── EMA add button ────────────────────────────────────────────────
+document.getElementById('ema-add-btn').addEventListener('click', () => {
+    const input  = document.getElementById('ema-input');
+    const period = parseInt(input.value);
+    if (!period || period < 2 || period > 500) return;
+    addEma(period);
+    input.value = '';
+});
+document.getElementById('ema-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('ema-add-btn').click();
+});
 
 // ── Timeframe buttons ─────────────────────────────────────────────
 document.querySelectorAll('.tf-btn').forEach(btn => {
