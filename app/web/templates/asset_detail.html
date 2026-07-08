@@ -48,7 +48,11 @@
     </div>
 </div>
 
-<div id="chart-container" style="width:100%;height:400px;overflow:hidden;"></div>
+<div id="chart-container" style="width:100%;height:400px;overflow:hidden;position:relative;">
+    <div id="chart-legend" style="position:absolute;top:8px;left:12px;z-index:10;font-size:12px;
+         font-family:monospace;pointer-events:none;background:rgba(26,26,46,0.75);
+         padding:4px 10px;border-radius:4px;line-height:1.8;"></div>
+</div>
 <div id="rsi-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">RSI(14)</span></div>
 <div id="macd-pane"  class="ind-pane" style="width:100%;height:120px;overflow:hidden;position:relative;"><span class="pane-label">MACD(12,26,9)</span></div>
 <div id="stoch-pane" class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">Stoch(14,3,3)</span></div>
@@ -102,6 +106,17 @@ const candleSeries = mainChart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350',
     borderVisible: false,
     wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+});
+
+// Volume histogram pinned to the bottom 20% of the main chart
+const volumeSeries = mainChart.addHistogramSeries({
+    priceFormat:      { type: 'volume' },
+    priceScaleId:     'volume',
+    lastValueVisible: false,
+    priceLineVisible: false,
+});
+mainChart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
 });
 
 const SO = { priceLineVisible: false, lastValueVisible: false };
@@ -254,11 +269,36 @@ document.querySelectorAll('.ind-btn').forEach(btn => {
 
 // ── Load data ────────────────────────────────────────────────────
 const allSeries = [
-    candleSeries,
+    candleSeries, volumeSeries,
     bbUpperSeries, bbMidSeries, bbLowerSeries,
     rsiSeries, macdLineSeries, macdSignalSeries, macdHistSeries,
     stochKSeries, stochDSeries, adxSeries, adxPosSeries, adxNegSeries,
 ];
+
+// ── OHLCV legend ─────────────────────────────────────────────────
+function setLegend(bar, vol) {
+    if (!bar) return;
+    const bull   = bar.close >= bar.open;
+    const c      = bull ? '#26a69a' : '#ef5350';
+    const volStr = vol != null ? Number(vol).toLocaleString() : '—';
+    document.getElementById('chart-legend').innerHTML =
+        `<span style="color:#888;">O</span> <span style="color:${c}">${bar.open.toFixed(2)}</span>&nbsp;&nbsp;` +
+        `<span style="color:#888;">H</span> <span style="color:#26a69a">${bar.high.toFixed(2)}</span>&nbsp;&nbsp;` +
+        `<span style="color:#888;">L</span> <span style="color:#ef5350">${bar.low.toFixed(2)}</span>&nbsp;&nbsp;` +
+        `<span style="color:#888;">C</span> <span style="color:${c}">${bar.close.toFixed(2)}</span>&nbsp;&nbsp;` +
+        `<span style="color:#888;">V</span> <span style="color:#d1d4dc">${volStr}</span>`;
+}
+
+mainChart.subscribeCrosshairMove(param => {
+    if (!param.time || !param.seriesData.has(candleSeries)) {
+        // crosshair left the chart — restore last bar
+        const last = candleSeries.data ? candleSeries.data().at(-1) : null;
+        return;
+    }
+    const bar = param.seriesData.get(candleSeries);
+    const vol = param.seriesData.get(volumeSeries);
+    setLegend(bar, vol ? vol.value : null);
+});
 
 let currentTf = '1min';
 
@@ -285,6 +325,15 @@ async function loadBars(timeframe, preserveRange = false) {
     }
 
     candleSeries.setData(bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close })));
+    volumeSeries.setData(bars.map(b => ({
+        time:  b.time,
+        value: b.volume,
+        color: b.close >= b.open ? 'rgba(38,166,154,0.45)' : 'rgba(239,83,80,0.45)',
+    })));
+
+    // seed legend with last bar
+    const lastBar = bars[bars.length - 1];
+    setLegend(lastBar, lastBar.volume);
 
     Object.keys(emaSeries).map(Number).forEach(period => {
         emaSeries[period].setData(ind[`ema_${period}`] || []);
