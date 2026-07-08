@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import delete, text, func
 import math
 import pandas as pd
+from datetime import timezone
 from sqlalchemy.exc import IntegrityError
 from db.models import *
 from db.database import *
@@ -15,9 +16,6 @@ from pydantic import TypeAdapter
 from scripts.populate_assets import *
 from scripts.populate_prices import *
 from web.auth.auth import *
-import pytz
-
-ET = pytz.timezone("US/Eastern")
 
 _TIMEFRAME_TABLE = {
     "1min":  ("asset_price",       "datetime"),
@@ -120,7 +118,7 @@ async def get_bars(symbol: str, timeframe: str = "1min", limit: int = 300, db: A
 
     bars = [
         {
-            "time": int(ET.localize(row[0]).timestamp()),
+            "time": int(row[0].replace(tzinfo=timezone.utc).timestamp()),
             "open": float(row[1]),
             "high": float(row[2]),
             "low": float(row[3]),
@@ -230,7 +228,7 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "9,20,
         for row in df.itertuples(index=False):
             v = getattr(row, col)
             if not pd.isna(v):
-                out.append({"time": int(ET.localize(row.t).timestamp()), "value": round(float(v), 4)})
+                out.append({"time": int(row.t.replace(tzinfo=timezone.utc).timestamp()), "value": round(float(v), 4)})
         return out
 
     hist = []
@@ -238,7 +236,7 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "9,20,
         v = row.macd_hist
         if not pd.isna(v):
             fv = float(v)
-            hist.append({"time": int(ET.localize(row.t).timestamp()), "value": round(fv, 4),
+            hist.append({"time": int(row.t.replace(tzinfo=timezone.utc).timestamp()), "value": round(fv, 4),
                          "color": "#26a69a" if fv >= 0 else "#ef5350"})
 
     ema_out = {f"ema_{p}": to_series(f"ema_{p}") for p in ema_periods}
