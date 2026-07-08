@@ -6,8 +6,6 @@ from db.models import *
 from db.database import *
 import asyncio
 
-redis = redis.Redis(host="redis", port=6379, decode_responses=True)
-
 celery = Celery(
     "worker",
     broker="redis://redis:6379/0",
