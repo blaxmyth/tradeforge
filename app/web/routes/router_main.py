@@ -100,11 +100,12 @@ async def index(
         for r in strat_rows
     ]
 
-    # ── recent signals from signal_log ───────────────────────────────────────
+    # ── today's signals from signal_log ──────────────────────────────────────
+    today_start = datetime.combine(today, datetime.min.time())
     signal_rows = (await db.execute(
         select(SignalLog)
+        .where(SignalLog.fired_at >= today_start)
         .order_by(SignalLog.fired_at.desc())
-        .limit(20)
     )).scalars().all()
 
     signals = [
@@ -113,8 +114,7 @@ async def index(
             "symbol":    s.symbol,
             "direction": s.direction,
             "price":     round(s.entry_price, 2) if s.entry_price else None,
-            "fired_at":  s.fired_at.strftime("%m/%d %H:%M") if s.fired_at else None,
-            "today":     s.fired_at.date() == today if s.fired_at else False,
+            "fired_at":  s.fired_at.strftime("%H:%M") if s.fired_at else None,
         }
         for s in signal_rows
     ]

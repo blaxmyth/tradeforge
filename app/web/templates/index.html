@@ -15,7 +15,7 @@
         <div class="label">Strategies</div>
     </div>
     <div class="statistic">
-        <div class="value">{{ signals | selectattr('today') | list | length }}</div>
+        <div class="value">{{ signals | length }}</div>
         <div class="label">Signals Today</div>
     </div>
 </div>
@@ -102,25 +102,22 @@
         </div>
         {% endif %}
 
-        <!-- Signal history -->
+        <!-- Today's signals -->
         <h3 class="ui header" style="margin-bottom:10px;">
             <i class="bolt icon"></i>
-            <div class="content">Recent Signals</div>
+            <div class="content">Today's Signals</div>
         </h3>
         {% if not signals %}
-        <div class="ui message" style="font-size:13px;">No signals recorded yet.</div>
+        <div class="ui message" style="font-size:13px;">No signals today.</div>
         {% else %}
         <table class="ui very compact table" style="font-size:12px;">
             <thead>
-                <tr><th>Symbol</th><th>Dir</th><th>Price</th><th>When</th></tr>
+                <tr><th>Symbol</th><th>Dir</th><th>Price</th><th>Time</th></tr>
             </thead>
             <tbody>
             {% for sig in signals %}
                 <tr>
-                    <td>
-                        <a href="/asset/{{ sig.symbol }}">{{ sig.symbol }}</a>
-                        {% if sig.today %}<span style="color:#ff9800; font-size:10px;"> ●</span>{% endif %}
-                    </td>
+                    <td><a href="/asset/{{ sig.symbol }}">{{ sig.symbol }}</a></td>
                     <td style="color:{{ '#26a69a' if sig.direction == 'breakout' else '#ef5350' }};">
                         {{ '↑' if sig.direction == 'breakout' else '↓' }}
                     </td>
