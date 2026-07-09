@@ -261,19 +261,29 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "200",
 @router.get("/api/asset/{symbol}/signals")
 async def get_signals(symbol: str, db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
-        select(SignalLog.fired_at, SignalLog.direction)
+        select(SignalLog.fired_at, SignalLog.direction, SignalLog.entry_time)
         .where(SignalLog.symbol == symbol)
         .order_by(SignalLog.fired_at.asc())
     )).fetchall()
 
-    return JSONResponse(content=[
-        {
-            "time":      int(row.fired_at.replace(tzinfo=timezone.utc).timestamp()),
+    results = []
+    for row in rows:
+        if not row.fired_at:
+            continue
+        # Place the marker on the actual signal candle, not when Celery detected it
+        bar_dt = row.fired_at
+        if row.entry_time:
+            try:
+                h, m = row.entry_time.split(":")
+                bar_dt = row.fired_at.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+            except (ValueError, AttributeError):
+                pass
+        results.append({
+            "time":      int(bar_dt.replace(tzinfo=timezone.utc).timestamp()),
             "direction": row.direction,
-        }
-        for row in rows
-        if row.fired_at
-    ])
+        })
+
+    return JSONResponse(content=results)
 
 
 @router.get("/asset/{symbol}")
