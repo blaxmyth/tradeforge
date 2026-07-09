@@ -258,6 +258,24 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "200",
     })
 
 
+@router.get("/api/asset/{symbol}/signals")
+async def get_signals(symbol: str, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(SignalLog.fired_at, SignalLog.direction)
+        .where(SignalLog.symbol == symbol)
+        .order_by(SignalLog.fired_at.asc())
+    )).fetchall()
+
+    return JSONResponse(content=[
+        {
+            "time":      int(row.fired_at.replace(tzinfo=timezone.utc).timestamp()),
+            "direction": row.direction,
+        }
+        for row in rows
+        if row.fired_at
+    ])
+
+
 @router.get("/asset/{symbol}")
 async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token), context: dict = Depends(get_authenticated_template_context)):
 

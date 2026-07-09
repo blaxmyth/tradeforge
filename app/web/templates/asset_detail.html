@@ -344,12 +344,14 @@ async function loadBars(timeframe, preserveRange = false) {
     const savedRange = preserveRange ? mainChart.timeScale().getVisibleLogicalRange() : null;
 
     const emaPeriods = Object.keys(emaSeries).join(',') || '200';
-    const [barsResp, indResp] = await Promise.all([
+    const [barsResp, indResp, sigResp] = await Promise.all([
         fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
         fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}&ema=${emaPeriods}`),
+        fetch(`/api/asset/${SYMBOL}/signals`),
     ]);
-    const bars = await barsResp.json();
-    const ind  = await indResp.json();
+    const bars    = await barsResp.json();
+    const ind     = await indResp.json();
+    const signals = await sigResp.json();
 
     if (!Array.isArray(bars) || bars.length === 0) {
         allSeries.forEach(s => s.setData([]));
@@ -365,6 +367,14 @@ async function loadBars(timeframe, preserveRange = false) {
         time:  b.time,
         value: b.volume,
         color: b.close >= b.open ? 'rgba(38,166,154,0.45)' : 'rgba(239,83,80,0.45)',
+    })));
+
+    candleSeries.setMarkers((signals || []).map(s => ({
+        time:     s.time,
+        position: s.direction === 'breakout' ? 'belowBar' : 'aboveBar',
+        shape:    s.direction === 'breakout' ? 'arrowUp'  : 'arrowDown',
+        color:    s.direction === 'breakout' ? '#26a69a'  : '#ef5350',
+        text:     s.direction === 'breakout' ? 'BO'       : 'BD',
     })));
 
     // seed legend with last bar

@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+
+{% block title %}<title>Enter Code | TradeForge</title>{% endblock %}
+
+{% block content %}
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+        <p style="color:#aaa;">A 6-digit code was sent to your phone. It expires in 10 minutes.</p>
+        {% if errors|length > 0 %}
+        <div class="ui error message">
+            {% for error in errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <br>
+        <form class="ui large form" method="post">
+            <input type="hidden" name="phone" value="{{ phone }}">
+            <div class="field required">
+                <label class="left aligned">Code</label>
+                <input type="text" name="code" placeholder="123456" inputmode="numeric"
+                       pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required>
+            </div>
+            <button type="submit" class="ui fluid teal button">Verify</button>
+        </form>
+        <div style="margin-top:14px;">
+            <a href="/login-sms">Send a new code</a>
+            &nbsp;·&nbsp;
+            <a href="/login">Sign in with password instead</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

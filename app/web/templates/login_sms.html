@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+
+{% block title %}<title>Sign In with Phone | TradeForge</title>{% endblock %}
+
+{% block content %}
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+        {% if errors|length > 0 %}
+        <div class="ui error message">
+            {% for error in errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <br>
+        <form class="ui large form" method="post">
+            <div class="field required">
+                <label class="left aligned">Phone Number</label>
+                <input type="tel" name="phone" placeholder="(555) 123-4567" autofocus required>
+            </div>
+            <button type="submit" class="ui fluid teal button">Send Code</button>
+        </form>
+        <div style="margin-top:14px;">
+            <a href="/login">Sign in with email and password instead</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
