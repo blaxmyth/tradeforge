@@ -31,7 +31,7 @@ async def index(
 ):
     today = datetime.now(ET).date()
 
-    # ── watchlist + latest two prices per asset ───────────────────────────────
+    # ── watchlist + day-over-day price change ─────────────────────────────────
     watchlist = (await db.scalars(
         select(WatchList)
         .where(WatchList.user_id == current_user.id)
@@ -43,34 +43,33 @@ async def index(
     if watchlist:
         asset_ids = [w.asset_id for w in watchlist]
 
-        ranked = (
-            select(
-                AssetPrice.asset_id,
-                AssetPrice.close,
-                AssetPrice.datetime,
-                func.row_number().over(
-                    partition_by=AssetPrice.asset_id,
-                    order_by=AssetPrice.datetime.desc(),
-                ).label("rn"),
-            )
-            .where(AssetPrice.asset_id.in_(asset_ids))
-            .subquery("ranked")
-        )
-        price_rows = (await db.execute(
-            select(ranked.c.asset_id, ranked.c.close, ranked.c.datetime)
-            .where(ranked.c.rn <= 2)
-            .order_by(ranked.c.asset_id, ranked.c.datetime.desc())
-        )).fetchall()
+        # Last two daily closes per asset from the 1-day continuous aggregate
+        daily_ranked = (await db.execute(text("""
+            SELECT asset_id, close, bucket,
+                   row_number() OVER (PARTITION BY asset_id ORDER BY bucket DESC) AS rn
+            FROM asset_price_1day
+            WHERE asset_id = ANY(:ids)
+        """), {"ids": asset_ids})).fetchall()
 
         price_map: dict[int, list] = defaultdict(list)
-        for r in price_rows:
-            price_map[r.asset_id].append(r.close)
+        for r in daily_ranked:
+            if r.rn <= 2:
+                price_map[r.asset_id].append(r.close)
+
+        # Fall back to 1-min bars for today's latest price if market is open
+        latest_1min = (await db.execute(text("""
+            SELECT DISTINCT ON (asset_id) asset_id, close
+            FROM asset_price
+            WHERE asset_id = ANY(:ids)
+            ORDER BY asset_id, datetime DESC
+        """), {"ids": asset_ids})).fetchall()
+        latest_map = {r.asset_id: r.close for r in latest_1min}
 
         for w in watchlist:
-            prices = price_map.get(w.asset_id, [])
-            latest = prices[0] if prices else None
-            prev   = prices[1] if len(prices) > 1 else None
-            pct    = round((latest - prev) / prev * 100, 2) if latest and prev else None
+            daily = price_map.get(w.asset_id, [])
+            latest = latest_map.get(w.asset_id) or (daily[0] if daily else None)
+            prev   = daily[1] if len(daily) > 1 else (daily[0] if daily else None)
+            pct    = round((latest - prev) / prev * 100, 2) if latest and prev and prev != latest else None
             watchlist_data.append({
                 "symbol": w.asset.symbol,
                 "name":   w.asset.name,
