@@ -3,10 +3,11 @@ import threading # Required for cross-thread synchronization
 import datetime # NEW: Added for time and date operations
 from alpaca.data.live import StockDataStream
 from config import * # Assuming ALPACA_KEY and ALPACA_SECRET
-from db.models import Asset, AssetPrice, WatchList
+from db.models import Asset, AssetPrice, AssetStrategy, Strategy, WatchList
 from db.database import async_session_maker # NOTE: This must be configured as a SYNCHRONOUS session maker for this fix to work (e.g., using psycopg2, not asyncpg)
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from strats.opening_range_strategy import check_bar
 import pytz
 import time # Added for simple retry mechanism
 
@@ -33,17 +34,24 @@ MARKET_CLOSE_MINUTE = 0 # 00 minutes
 MARKET_CLOSED_LOGGED = False 
 # ------------------------------------
 
-def _fetch_current_watchlist_sync():
-    """
-    Fetches the symbols currently marked in the WatchList table using a synchronous session.
-    """
+def _fetch_subscribed_symbols_sync() -> set:
+    """Returns the union of watchlist symbols and strategy-linked symbols."""
     with async_session_maker() as session:
-        watchlist_result = session.execute(
-            select(WatchList).options(selectinload(WatchList.asset))
-        )
-        # Return a set of uppercase symbols for easy comparison
-        symbols = {entry.asset.symbol.upper() for entry in watchlist_result.scalars().all() if entry.asset}
-        return symbols
+        watchlist_symbols = {
+            entry.asset.symbol.upper()
+            for entry in session.execute(
+                select(WatchList).options(selectinload(WatchList.asset))
+            ).scalars().all()
+            if entry.asset
+        }
+        strategy_symbols = {
+            row[0].upper()
+            for row in session.execute(
+                select(Asset.symbol)
+                .join(AssetStrategy, AssetStrategy.asset_id == Asset.id)
+            ).fetchall()
+        }
+    return watchlist_symbols | strategy_symbols
 
 def initialize_asset_data_sync():
     """
@@ -54,22 +62,17 @@ def initialize_asset_data_sync():
     
     # We use the session maker as a synchronous context manager here
     with async_session_maker() as session:
-        # --- 1. Get Watchlist Symbols and set initial subscription state ---
-        watchlist_result = session.execute(
-            select(WatchList).options(selectinload(WatchList.asset))
-        )
-        watchlist_entries = watchlist_result.scalars().all()
-        
-        initial_symbols = {entry.asset.symbol.upper() for entry in watchlist_entries if entry.asset}
+        # --- 1. Get subscription symbols (watchlist ∪ strategy) ---
+        initial_symbols      = _fetch_subscribed_symbols_sync()
         CURRENT_SUBSCRIPTION_SET = initial_symbols
-        SYMBOLS_TO_SUBSCRIBE = list(initial_symbols) # Used for initial subscribe
-        
-        print(f"Initial WatchList symbols loaded: {SYMBOLS_TO_SUBSCRIBE}")
-        
+        SYMBOLS_TO_SUBSCRIBE = list(initial_symbols)
+
+        print(f"Initial subscribed symbols ({len(SYMBOLS_TO_SUBSCRIBE)}): {SYMBOLS_TO_SUBSCRIBE}")
+
         # --- 2. Create Asset ID Map ---
         asset_result = session.execute(select(Asset))
         ASSET_MAP = {a.symbol: a.id for a in asset_result.scalars()}
-        
+
         print(f"Asset ID map created with {len(ASSET_MAP)} entries.")
 
 
@@ -125,19 +128,30 @@ def _insert_bar_data_sync(bar):
 
 def _sync_locked_execution(bar):
     """
-    Acquires the thread lock and runs the pure synchronous insertion logic.
+    Acquires the thread lock and runs the pure synchronous insertion logic,
+    then triggers the opening range signal check outside the lock.
     """
-    # CRITICAL FIX: Acquire the threading lock. This is a blocking operation
-    if not THREAD_LOCK.acquire(timeout=5): 
+    if not THREAD_LOCK.acquire(timeout=5):
         print(f"FATAL: Could not acquire lock for {bar.symbol}. Skipping insertion.")
         return
-        
+
+    inserted = False
+    bar_dt   = None
     try:
         _insert_bar_data_sync(bar)
+        inserted = True
+        bar_dt   = bar.timestamp  # already converted to ET naive by _insert_bar_data_sync
     except Exception as e:
         print(f"FATAL ERROR during isolated insertion for {bar.symbol}: {e}")
     finally:
         THREAD_LOCK.release()
+
+    # Run signal check after releasing the lock so other bars aren't blocked
+    if inserted and bar_dt is not None:
+        try:
+            check_bar(bar.symbol, bar_dt)
+        except Exception as e:
+            print(f"[ORS] check_bar error for {bar.symbol}: {e}")
 
 async def on_minute_bar(bar): 
     """
@@ -148,35 +162,30 @@ async def on_minute_bar(bar):
 
 def _check_and_update_subscription_sync():
     """
-    Fetches the latest watchlist and updates the Alpaca subscription dynamically.
+    Fetches the latest watchlist + strategy symbols and updates Alpaca subscriptions.
     This function runs periodically in the polling thread.
     """
     global CURRENT_SUBSCRIPTION_SET
 
-    latest_watchlist = _fetch_current_watchlist_sync()
-    
-    # Calculate differences
-    to_unsubscribe = list(CURRENT_SUBSCRIPTION_SET - latest_watchlist)
-    to_subscribe = list(latest_watchlist - CURRENT_SUBSCRIPTION_SET)
-    
+    latest = _fetch_subscribed_symbols_sync()
+
+    to_unsubscribe = list(CURRENT_SUBSCRIPTION_SET - latest)
+    to_subscribe   = list(latest - CURRENT_SUBSCRIPTION_SET)
+
     if to_subscribe or to_unsubscribe:
         print("-" * 50)
-        print(f"Watchlist Change Detected at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # 1. Unsubscribe
+        print(f"Subscription change detected at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         if to_unsubscribe:
             stream.unsubscribe_bars(*to_unsubscribe)
             print(f"UNSUBSCRIBED: {to_unsubscribe}")
-            
-        # 2. Subscribe
+
         if to_subscribe:
-            # We must pass the callback function when subscribing new symbols
             stream.subscribe_bars(on_minute_bar, *to_subscribe)
             print(f"SUBSCRIBED: {to_subscribe}")
-            
-        # 3. Update the global state
-        CURRENT_SUBSCRIPTION_SET = latest_watchlist
-        print(f"New Active Subscription Set Size: {len(CURRENT_SUBSCRIPTION_SET)}")
+
+        CURRENT_SUBSCRIPTION_SET = latest
+        print(f"Active subscriptions: {len(CURRENT_SUBSCRIPTION_SET)}")
 
 def _poll_for_watchlist_changes(interval_seconds=60):
     """
@@ -243,7 +252,7 @@ def start_stream():
         print("Starting Alpaca Stock Data Stream (Blocking, Dedicated Process)...")
         stream.run() 
     else:
-        print("WatchList is empty or initialization failed. Not starting the data stream.")
+        print("No symbols to subscribe (watchlist and strategies are empty). Not starting the data stream.")
 
 if __name__ == "__main__":
     # The application entry point now calls the synchronous wrapper.

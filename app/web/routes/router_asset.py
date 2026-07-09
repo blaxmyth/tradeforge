@@ -298,7 +298,26 @@ async def asset_detail(request: Request, symbol, db: AsyncSession = Depends(get_
         .where(WatchList.asset_id == asset.id, WatchList.user_id == current_user.id)
     ) is not None
 
-    return templates.TemplateResponse("asset_detail.html", {"request": request, "asset": asset, "strategies": strategies, "on_watchlist": on_watchlist, **context})
+    has_data = await db.scalar(
+        select(AssetPrice.asset_id)
+        .where(AssetPrice.asset_id == asset.id)
+        .limit(1)
+    ) is not None
+
+    # Build TradingView symbol (used when has_data is False)
+    _TV_EXCHANGES = {"NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"}
+    exchange = (asset.exchange or "").upper()
+    tv_symbol = f"{exchange}:{asset.symbol}" if exchange in _TV_EXCHANGES else asset.symbol
+
+    return templates.TemplateResponse("asset_detail.html", {
+        "request": request,
+        "asset": asset,
+        "strategies": strategies,
+        "on_watchlist": on_watchlist,
+        "has_data": has_data,
+        "tv_symbol": tv_symbol,
+        **context,
+    })
 
 @router.get("/add_to_watchlist/{asset_id}")
 async def add_to_watchlist(request: Request, asset_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user_from_token)):

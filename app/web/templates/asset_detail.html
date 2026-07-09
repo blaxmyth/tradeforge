@@ -25,6 +25,7 @@
     </div>
 </div>
 
+{% if has_data %}
 <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
     <div class="ui small buttons">
         <button class="ui button tf-btn active" data-tf="1min">1 Min</button>
@@ -60,6 +61,33 @@
 <div id="adx-pane"   class="ind-pane" style="width:100%;height:100px;overflow:hidden;position:relative;"><span class="pane-label">ADX(14) <span id="adx-val" style="color:#d1d4dc;font-family:monospace;"></span></span></div>
 <div id="chart-status" style="color:#999;font-size:12px;margin:6px 0 20px;"></div>
 
+{% else %}
+
+<!-- TradingView Advanced Chart — shown when no local bar data exists -->
+<div class="tradingview-widget-container" style="height:600px;margin-bottom:20px;">
+    <div id="tv-advanced-chart"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+    new TradingView.widget({
+        "container_id":      "tv-advanced-chart",
+        "width":             "100%",
+        "height":            600,
+        "symbol":            "{{ tv_symbol }}",
+        "interval":          "D",
+        "timezone":          "America/New_York",
+        "theme":             "dark",
+        "style":             "1",
+        "locale":            "en",
+        "toolbar_bg":        "#1a1a2e",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": false,
+    });
+    </script>
+</div>
+
+{% endif %}
+
 <!-- <table class="ui striped compact table">
     <thead>
         <tr>
@@ -76,6 +104,7 @@
     </tbody>
 </table> -->
 
+{% if has_data %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 const SYMBOL = "{{ asset.symbol }}";
@@ -453,4 +482,5 @@ loadBars(currentTf);
 // ── Auto-refresh every 60 seconds (preserves zoom/scroll position) ─
 setInterval(() => loadBars(currentTf, true), 60_000);
 </script>
+{% endif %}
 {% endblock %}

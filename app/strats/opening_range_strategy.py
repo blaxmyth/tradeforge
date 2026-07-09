@@ -317,13 +317,146 @@ def sweep(symbol: str, base_config: dict | None = None, days: int = 60) -> list[
     return sorted(results, key=lambda x: (x["profit_factor"], x["win_rate"]), reverse=True)
 
 
-# ── live runner (Celery) ──────────────────────────────────────────────────────
+# ── per-symbol signal check (shared by stream and Celery) ────────────────────
+
+def _run_symbol(symbol: str, cfg: dict, today: date) -> None:
+    """
+    Core check for one symbol. Fetches today's bars, simulates, fires if triggered.
+    Called by check_bar (stream, real-time) and opening_range_strategy (Celery fallback).
+    """
+    signal_key = f"ors:{STRATEGY_NAME}:{symbol}:{today}"
+    try:
+        if _redis.get(signal_key):
+            return
+    except Exception:
+        pass
+
+    if cfg["timeframe"] not in _LIVE_BUCKET:
+        return
+
+    bucket      = _LIVE_BUCKET[cfg["timeframe"]]
+    or_start_dt = datetime.combine(today, _parse_time(cfg["or_start"]))
+
+    with SyncSessionLocal() as session:
+        asset_id = session.execute(
+            select(Asset.id).where(Asset.symbol == symbol)
+        ).scalar_one_or_none()
+        if not asset_id:
+            return
+
+        day_bars = session.execute(text(f"""
+            SELECT
+                time_bucket('{bucket}', datetime) AS t,
+                first(open, datetime)  AS open,
+                max(high)              AS high,
+                min(low)               AS low,
+                last(close, datetime)  AS close,
+                sum(volume)            AS volume
+            FROM asset_price
+            WHERE asset_id = :aid
+              AND datetime >= :start
+            GROUP BY 1
+            ORDER BY 1 ASC
+        """), {"aid": asset_id, "start": or_start_dt}).fetchall()
+
+    trade = _simulate_day(day_bars, cfg)
+    if not trade:
+        return
+
+    direction = trade["direction"]
+    level     = trade["or_high"] if direction == "breakout" else trade["or_low"]
+    side      = "above OR high" if direction == "breakout" else "below OR low"
+
+    message = (
+        f"[TradeForge] {direction.upper()}: {symbol}\n"
+        f"Strategy   : {STRATEGY_NAME}\n"
+        f"Entry (sim): ${trade['entry_price']:.2f} @ {trade['entry_time']} ET\n"
+        f"Closed {side}: ${level:.2f}\n"
+        f"OR range   : ${trade['or_low']:.2f} – ${trade['or_high']:.2f}\n"
+        f"Config     : OR {cfg['or_start']}–{cfg['or_end']} | "
+        f"buffer {cfg['buffer_pct']}% | tf {cfg['timeframe']}"
+    )
+
+    ttl = int(
+        (datetime.combine(today + timedelta(days=1), time(0, 0)) - datetime.now())
+        .total_seconds()
+    )
+
+    redis_claimed = False
+    try:
+        redis_claimed = _redis.set(signal_key, "fired", ex=max(ttl, 3600), nx=True)
+    except Exception:
+        pass
+
+    if not redis_claimed:
+        with SyncSessionLocal() as session:
+            already = session.execute(
+                select(SignalLog.id)
+                .where(
+                    SignalLog.strategy_name == STRATEGY_NAME,
+                    SignalLog.symbol        == symbol,
+                    SignalLog.fired_at      >= datetime.combine(today, time(0, 0)),
+                )
+            ).scalar_one_or_none()
+        if already:
+            return
+
+    print(f"[ORS] SIGNAL — {message}")
+    _send_notification(message)
+
+    with SyncSessionLocal() as session:
+        session.add(SignalLog(
+            strategy_name   = STRATEGY_NAME,
+            symbol          = symbol,
+            direction       = direction,
+            entry_price     = trade["entry_price"],
+            or_high         = trade["or_high"],
+            or_low          = trade["or_low"],
+            entry_time      = trade["entry_time"],
+            fired_at        = datetime.now(),
+            config_snapshot = cfg,
+        ))
+        session.commit()
+
+
+def check_bar(symbol: str, bar_dt: datetime) -> None:
+    """
+    Called by the bar stream immediately after each bar is written to the DB.
+    Skips bars inside or before the OR window; runs _run_symbol for bars after it.
+    Latency: seconds (Alpaca delivery time) vs ~2 minutes for the Celery fallback.
+    """
+    if bar_dt.weekday() >= 5:
+        return
+
+    with SyncSessionLocal() as session:
+        strategy_row = session.execute(
+            select(Strategy.config).where(Strategy.name == STRATEGY_NAME)
+        ).scalar_one_or_none()
+        if strategy_row is None:
+            return
+        cfg = _merge(strategy_row)
+
+        if bar_dt.time() <= _parse_time(cfg["or_end"]):
+            return
+
+        has_strategy = session.execute(
+            select(AssetStrategy.id)
+            .join(Strategy, AssetStrategy.strategy_id == Strategy.id)
+            .join(Asset,    AssetStrategy.asset_id    == Asset.id)
+            .where(Strategy.name == STRATEGY_NAME, Asset.symbol == symbol)
+        ).scalar_one_or_none()
+        if not has_strategy:
+            return
+
+    _run_symbol(symbol, cfg, bar_dt.date())
+
+
+# ── Celery fallback (1-2 min latency; Redis NX prevents double-fire) ──────────
 
 def opening_range_strategy() -> None:
     """
-    Called every minute by the Celery beat scheduler during market hours.
-    Checks both breakout and breakdown for each asset assigned to 'opening_range'.
-    Fires the first side that breaks, then deduplicates for the rest of the day.
+    Celery beat fallback — catches any signal the stream may have missed.
+    Primary detection is now done by check_bar() in the stream process.
     """
     import pytz
     ET     = pytz.timezone("US/Eastern")
@@ -350,101 +483,4 @@ def opening_range_strategy() -> None:
         ).scalars().all()
 
     for symbol in symbols:
-        signal_key = f"ors:{STRATEGY_NAME}:{symbol}:{today}"
-        try:
-            if _redis.get(signal_key):
-                continue
-        except Exception:
-            pass  # Redis unavailable — fall through to DB check below
-
-        if cfg["timeframe"] not in _LIVE_BUCKET:
-            continue
-
-        bucket      = _LIVE_BUCKET[cfg["timeframe"]]
-        or_start_dt = datetime.combine(today, _parse_time(cfg["or_start"]))
-
-        with SyncSessionLocal() as session:
-            asset_id = session.execute(
-                select(Asset.id).where(Asset.symbol == symbol)
-            ).scalar_one_or_none()
-            if not asset_id:
-                continue
-
-            # Aggregate directly from raw 1-min bars so there is no
-            # continuous aggregate refresh lag on non-1min timeframes.
-            day_bars = session.execute(text(f"""
-                SELECT
-                    time_bucket('{bucket}', datetime) AS t,
-                    first(open, datetime)  AS open,
-                    max(high)              AS high,
-                    min(low)               AS low,
-                    last(close, datetime)  AS close,
-                    sum(volume)            AS volume
-                FROM asset_price
-                WHERE asset_id = :aid
-                  AND datetime >= :start
-                GROUP BY 1
-                ORDER BY 1 ASC
-            """), {"aid": asset_id, "start": or_start_dt}).fetchall()
-
-        trade = _simulate_day(day_bars, cfg)
-        if not trade:
-            print(f"[ORS] {symbol}: no signal yet")
-            continue
-
-        direction = trade["direction"]
-        level     = trade["or_high"] if direction == "breakout" else trade["or_low"]
-        side      = "above OR high" if direction == "breakout" else "below OR low"
-
-        message = (
-            f"[TradeForge] {direction.upper()}: {symbol}\n"
-            f"Strategy   : {STRATEGY_NAME}\n"
-            f"Entry (sim): ${trade['entry_price']:.2f} @ {trade['entry_time']} ET\n"
-            f"Closed {side}: ${level:.2f}\n"
-            f"OR range   : ${trade['or_low']:.2f} – ${trade['or_high']:.2f}\n"
-            f"Config     : OR {cfg['or_start']}–{cfg['or_end']} | "
-            f"buffer {cfg['buffer_pct']}% | tf {cfg['timeframe']}"
-        )
-        ttl = int(
-            (datetime.combine(today + timedelta(days=1), time(0, 0)) - datetime.now())
-            .total_seconds()
-        )
-
-        # Atomically claim the signal slot — SET NX wins the race across workers.
-        # If Redis is down, fall back to a DB uniqueness check.
-        redis_claimed = False
-        try:
-            redis_claimed = _redis.set(signal_key, "fired", ex=max(ttl, 3600), nx=True)
-        except Exception:
-            pass
-
-        if not redis_claimed:
-            # Redis said key already exists (or was unreachable) — check DB as fallback
-            with SyncSessionLocal() as session:
-                already = session.execute(
-                    select(SignalLog.id)
-                    .where(
-                        SignalLog.strategy_name == STRATEGY_NAME,
-                        SignalLog.symbol        == symbol,
-                        SignalLog.fired_at      >= datetime.combine(today, time(0, 0)),
-                    )
-                ).scalar_one_or_none()
-            if already:
-                continue
-
-        print(f"[ORS] SIGNAL — {message}")
-        _send_notification(message)
-
-        with SyncSessionLocal() as session:
-            session.add(SignalLog(
-                strategy_name   = STRATEGY_NAME,
-                symbol          = symbol,
-                direction       = direction,
-                entry_price     = trade["entry_price"],
-                or_high         = trade["or_high"],
-                or_low          = trade["or_low"],
-                entry_time      = trade["entry_time"],
-                fired_at        = datetime.now(),
-                config_snapshot = cfg,
-            ))
-            session.commit()
+        _run_symbol(symbol, cfg, today)
