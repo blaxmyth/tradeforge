@@ -4,6 +4,7 @@ from scripts.populate_assets import populate_assets
 from strats.opening_range_strategy import opening_range_strategy
 from db.models import *
 from db.database import *
+from sqlalchemy import text
 import asyncio
 
 celery = Celery(
@@ -23,6 +24,12 @@ celery.conf.beat_schedule = {
     "run-opening-range-strategy": {
         "task": "tasks.tasks.run_opening_range_strategy",
         "schedule": crontab(minute="*/1", hour="9-15", day_of_week="1-5"),
+    },
+    # Refresh continuous aggregates every 5 min during market hours
+    # (TimescaleDB BGW is unreliable in Docker)
+    "refresh-continuous-aggregates": {
+        "task": "tasks.tasks.refresh_continuous_aggregates",
+        "schedule": crontab(minute="*/5", hour="9-16", day_of_week="1-5"),
     },
 }
 
@@ -44,3 +51,21 @@ async def _run():
 @celery.task
 def run_opening_range_strategy():
     opening_range_strategy()
+
+
+_CONTINUOUS_AGGREGATES = [
+    "asset_price_5min",
+    "asset_price_15min",
+    "asset_price_1hr",
+    "asset_price_1day",
+]
+
+@celery.task
+def refresh_continuous_aggregates():
+    # Must run outside a transaction block — use AUTOCOMMIT
+    with sync_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        for view in _CONTINUOUS_AGGREGATES:
+            conn.execute(text(
+                f"CALL refresh_continuous_aggregate('{view}', "
+                f"NOW() - INTERVAL '2 days', NOW())"
+            ))
