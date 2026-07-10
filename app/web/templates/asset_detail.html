@@ -373,8 +373,10 @@ async function loadBars(timeframe, preserveRange = false) {
     const savedRange = preserveRange ? mainChart.timeScale().getVisibleLogicalRange() : null;
 
     const emaPeriods = Object.keys(emaSeries).join(',') || '200';
+    // 1min: load 500 bars (~1.5 sessions) so intraday signal markers always fall within the window
+    const barLimit = timeframe === '1min' ? 500 : 300;
     const [barsResp, indResp, sigResp] = await Promise.all([
-        fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=300`),
+        fetch(`/api/asset/${SYMBOL}/bars?timeframe=${timeframe}&limit=${barLimit}`),
         fetch(`/api/asset/${SYMBOL}/indicators?timeframe=${timeframe}&ema=${emaPeriods}`),
         fetch(`/api/asset/${SYMBOL}/signals`),
     ]);
