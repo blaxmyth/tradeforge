@@ -112,12 +112,13 @@
         {% else %}
         <table class="ui very compact table" style="font-size:12px;">
             <thead>
-                <tr><th>Symbol</th><th>Dir</th><th>Price</th><th>Time</th></tr>
+                <tr><th>Symbol</th><th>Strategy</th><th>Dir</th><th>Price</th><th>Time</th></tr>
             </thead>
             <tbody>
             {% for sig in signals %}
                 <tr>
                     <td><a href="/asset/{{ sig.symbol }}">{{ sig.symbol }}</a></td>
+                    <td style="color:#888;">{{ sig.strategy }}</td>
                     <td style="color:{{ '#26a69a' if sig.direction == 'breakout' else '#ef5350' }};">
                         {{ '↑' if sig.direction == 'breakout' else '↓' }}
                     </td>
