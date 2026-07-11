@@ -113,20 +113,20 @@ services:
     networks:
       - tradeforge_net
 
-  # celery-flower:
-  #   build: ./app
-  #   container_name: celery-flower
-  #   command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower
-  #   env_file: .env
-  #   ports:
-  #     - "5555:5555"
-  #   depends_on:
-  #     - fastapi-web
-  #     - redis
-  #   volumes:
-  #     - flower_data:/etc/db
-  #   networks:
-  #     - tradeforge_net
+  celery-flower:
+    build: ./app
+    container_name: celery-flower
+    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower
+    env_file: .env
+    ports:
+      - "5555:5555"
+    depends_on:
+      - fastapi-web
+      - redis
+    volumes:
+      - flower_data:/etc/db
+    networks:
+      - tradeforge_net
 
   portainer:
     container_name: portainer
