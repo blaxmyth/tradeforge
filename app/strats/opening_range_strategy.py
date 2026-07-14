@@ -440,7 +440,7 @@ def check_bar(symbol: str, bar_dt: datetime) -> None:
             return
 
         has_strategy = session.execute(
-            select(AssetStrategy.id)
+            select(AssetStrategy.asset_id)
             .join(Strategy, AssetStrategy.strategy_id == Strategy.id)
             .join(Asset,    AssetStrategy.asset_id    == Asset.id)
             .where(Strategy.name == STRATEGY_NAME, Asset.symbol == symbol)
