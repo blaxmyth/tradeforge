@@ -255,10 +255,20 @@ def start_stream():
         print("No symbols to subscribe (watchlist and strategies are empty). Not starting the data stream.")
 
 if __name__ == "__main__":
-    # The application entry point now calls the synchronous wrapper.
-    try:
-        start_stream()
-    except KeyboardInterrupt:
-        print("\nScript interrupted by user.")
-    except Exception as e:
-        print(f"An unexpected error occurred in main execution: {e}")
+    while True:
+        try:
+            start_stream()
+            break  # clean exit
+        except KeyboardInterrupt:
+            print("\nScript interrupted by user.")
+            break
+        except Exception as e:
+            msg = str(e).lower()
+            if "connection limit exceeded" in msg:
+                # Alpaca keeps the old WebSocket alive for ~60s after a crash.
+                # Retrying immediately just loops — wait it out.
+                print(f"[STREAM] Alpaca connection limit exceeded. Waiting 60s for old connection to expire...")
+                time.sleep(60)
+            else:
+                print(f"[STREAM] Unexpected error: {e}. Retrying in 10s...")
+                time.sleep(10)
