@@ -116,7 +116,7 @@ services:
   celery-flower:
     build: ./app
     container_name: celery-flower
-    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower --url-prefix=flower
+    command: celery --app=tasks.tasks:celery --broker=redis://redis:6379/0 flower --url-prefix=flower --persistent=True --db=/etc/db/flower --max-tasks=10000
     env_file: .env
     ports:
       - "5555:5555"
