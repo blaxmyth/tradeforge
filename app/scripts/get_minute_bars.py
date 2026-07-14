@@ -107,7 +107,7 @@ def _insert_bar_data_sync(bar):
         
                 session.add(candle)
                 session.commit() # SYNCHRONOUS commit
-                # print(f"Inserted bar for {bar.symbol} @ {bar.timestamp}")
+                print(f"[BAR] {bar.symbol} @ {bar.timestamp}")
                 return # Success
                 
             except Exception as e:
