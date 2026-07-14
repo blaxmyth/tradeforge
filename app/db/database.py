@@ -19,7 +19,7 @@ async_url = URL.create(
 )
 
 # Asynchronous engine
-async_engine = create_async_engine(async_url, echo=True)
+async_engine = create_async_engine(async_url, echo=False, pool_size=5, max_overflow=5)
 
 # Asynchronous Session Makers
 AsyncSessionLocal = sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
@@ -48,8 +48,8 @@ sync_url = URL.create(
     port=5432
 )
 
-# Synchronous engine
-sync_engine = create_engine(sync_url, echo=False)
+# Synchronous engine — small pool; Celery (-c 1) and the stream are serialized
+sync_engine = create_engine(sync_url, echo=False, pool_size=2, max_overflow=3)
 
 # Synchronous session maker (for use in stream.py)
 # NOTE: This yields synchronous sessions which must be used outside of the main async loop.
