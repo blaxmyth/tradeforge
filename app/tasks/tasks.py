@@ -67,5 +67,5 @@ def refresh_continuous_aggregates():
         for view in _CONTINUOUS_AGGREGATES:
             conn.execute(text(
                 f"CALL refresh_continuous_aggregate('{view}', "
-                f"NOW() - INTERVAL '2 days', NOW())"
+                f"(NOW() - INTERVAL '2 days')::timestamp, NOW()::timestamp)"
             ))
