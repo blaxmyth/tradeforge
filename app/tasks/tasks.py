@@ -44,7 +44,7 @@ def run_populate_assets():
     loop.run_until_complete(_run())
 
 async def _run():
-    async with async_session_maker() as session:
+    async with AsyncSessionMaker() as session:
         await populate_assets(session)
 
 
