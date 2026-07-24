@@ -221,7 +221,7 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "200",
     df["adx_pos"] = di_plus
     df["adx_neg"] = di_minus
 
-    df = df.tail(300)
+    df = df.tail(500)
 
     def to_series(col):
         out = []
