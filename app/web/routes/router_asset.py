@@ -226,17 +226,23 @@ async def get_indicators(symbol: str, timeframe: str = "1min", ema: str = "200",
     def to_series(col):
         out = []
         for row in df.itertuples(index=False):
+            t = int(row.t.replace(tzinfo=timezone.utc).timestamp())
             v = getattr(row, col)
-            if not pd.isna(v):
-                out.append({"time": int(row.t.replace(tzinfo=timezone.utc).timestamp()), "value": round(float(v), 4)})
+            if pd.isna(v):
+                out.append({"time": t})  # whitespace point — keeps time scale aligned
+            else:
+                out.append({"time": t, "value": round(float(v), 4)})
         return out
 
     hist = []
     for row in df.itertuples(index=False):
+        t = int(row.t.replace(tzinfo=timezone.utc).timestamp())
         v = row.macd_hist
-        if not pd.isna(v):
+        if pd.isna(v):
+            hist.append({"time": t})
+        else:
             fv = float(v)
-            hist.append({"time": int(row.t.replace(tzinfo=timezone.utc).timestamp()), "value": round(fv, 4),
+            hist.append({"time": t, "value": round(fv, 4),
                          "color": "#26a69a" if fv >= 0 else "#ef5350"})
 
     ema_out = {f"ema_{p}": to_series(f"ema_{p}") for p in ema_periods}
