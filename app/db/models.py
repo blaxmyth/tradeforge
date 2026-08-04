@@ -69,9 +69,10 @@ class SignalLog(Base):
     entry_price   = Column(Float)
     or_high       = Column(Float)
     or_low        = Column(Float)
-    entry_time    = Column(String)
-    fired_at      = Column(DateTime, nullable=False)
+    entry_time      = Column(String)
+    fired_at        = Column(DateTime, nullable=False)
     config_snapshot = Column(JSON)
+    alpaca_order_id = Column(String, nullable=True)
 
 class User(Base):
     __tablename__ = "user"

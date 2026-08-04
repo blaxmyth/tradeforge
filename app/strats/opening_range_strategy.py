@@ -36,6 +36,7 @@ from sqlalchemy.future import select
 from config import DISCORD_WEBHOOK, REDIS_HOST, REDIS_PORT
 from db.database import SyncSessionLocal
 from db.models import Asset, AssetStrategy, SignalLog, Strategy
+from scripts.order_manager import place_option_order, place_order
 
 TIMEFRAME_TABLE: dict[str, tuple[str, str]] = {
     "1min":  ("asset_price",       "datetime"),
@@ -62,6 +63,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "volume_mult":     0.0,
     "stop_loss_pct":   1.0,
     "take_profit_pct": 2.0,
+    "qty":             1,
+    "enable_options":  False,
+    "option_qty":      1,
 }
 
 SWEEP_GRID: dict[str, list] = {
@@ -404,6 +408,23 @@ def _run_symbol(symbol: str, cfg: dict, today: date) -> None:
     print(f"[ORS] SIGNAL — {message}")
     _send_notification(message)
 
+    order_id = place_order(
+        symbol          = symbol,
+        direction       = direction,
+        entry_price     = trade["entry_price"],
+        qty             = cfg.get("qty", 1),
+        stop_loss_pct   = cfg.get("stop_loss_pct", 0.0),
+        take_profit_pct = cfg.get("take_profit_pct", 0.0),
+    )
+
+    if cfg.get("enable_options"):
+        place_option_order(
+            symbol      = symbol,
+            direction   = direction,
+            entry_price = trade["entry_price"],
+            qty         = cfg.get("option_qty", 1),
+        )
+
     with SyncSessionLocal() as session:
         session.add(SignalLog(
             strategy_name   = STRATEGY_NAME,
@@ -415,6 +436,7 @@ def _run_symbol(symbol: str, cfg: dict, today: date) -> None:
             entry_time      = trade["entry_time"],
             fired_at        = datetime.now(),
             config_snapshot = cfg,
+            alpaca_order_id = order_id,
         ))
         session.commit()
 
