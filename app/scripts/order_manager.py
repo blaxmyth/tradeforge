@@ -10,7 +10,7 @@ from alpaca.trading.requests import (
 )
 from alpaca.trading.enums import ContractType, OrderSide, TimeInForce, OrderClass
 
-from config import ALPACA_PAPER_KEY, ALPACA_PAPER_SECRET
+from config import ALPACA_PAPER_KEY, ALPACA_PAPER_SECRET, DISCORD_WEBHOOK
 
 _client: TradingClient | None = None
 
@@ -20,6 +20,16 @@ def _get_client() -> TradingClient:
     if _client is None:
         _client = TradingClient(ALPACA_PAPER_KEY, ALPACA_PAPER_SECRET, paper=True)
     return _client
+
+
+def _notify(message: str) -> None:
+    if not DISCORD_WEBHOOK:
+        return
+    try:
+        from discordwebhook import Discord
+        Discord(url=DISCORD_WEBHOOK).post(content=message)
+    except Exception as exc:
+        print(f"[ORDER] Discord error: {exc}")
 
 
 def _next_friday(ref: date | None = None) -> date:
@@ -75,11 +85,15 @@ def place_order(
 
     try:
         order = _get_client().submit_order(LimitOrderRequest(**params))
-        print(f"[ORDER] {direction.upper()} {symbol} x{qty} limit ${entry_price:.2f} "
-              f"| stop ${stop_price:.2f} | target ${target_price:.2f} | id {order.id}")
+        msg = (f"[ORDER] {direction.upper()} {symbol} x{qty} limit ${entry_price:.2f} "
+               f"| stop ${stop_price:.2f} | target ${target_price:.2f} | id {order.id}")
+        print(msg)
+        _notify(msg)
         return str(order.id)
     except Exception as e:
-        print(f"[ORDER] Failed to place equity order for {symbol}: {e}")
+        msg = f"[ORDER] Failed to place equity order for {symbol}: {e}"
+        print(msg)
+        _notify(msg)
         return None
 
 
@@ -137,8 +151,12 @@ def place_option_order(
                 time_in_force=TimeInForce.DAY,
             )
         )
-        print(f"[OPTION] Order placed: {contract.symbol} x{qty} | id {order.id}")
+        msg = f"[OPTION] Order placed: {contract.symbol} x{qty} | id {order.id}"
+        print(msg)
+        _notify(msg)
         return str(order.id)
     except Exception as e:
-        print(f"[OPTION] Failed to place option order for {contract.symbol}: {e}")
+        msg = f"[OPTION] Failed to place option order for {contract.symbol}: {e}"
+        print(msg)
+        _notify(msg)
         return None
